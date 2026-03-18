@@ -10,6 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test build/tests/*.test.js",
     "dev": "tsx src/index.ts",
     "start:stdio": "node build/src/index.js",
     "start:http": "MCP_TRANSPORT=http-sse node build/src/index.js",
