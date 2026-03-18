@@ -13,7 +13,9 @@ test("createStellarClients exposes timeout wrapper API", () => {
 });
 
 test("withTimeout rejects long-running promise as NetworkError", async () => {
-  const config = loadConfig({});
+  const config = loadConfig({
+    STELLAR_REQUEST_TIMEOUT_MS: "25"
+  });
   const clients: StellarClients = createStellarClients(config);
 
   const neverResolves = new Promise<string>(() => {});
@@ -26,5 +28,5 @@ test("withTimeout rejects long-running promise as NetworkError", async () => {
       error.message.includes("test_operation timed out")
   );
 
-  assert.ok(Date.now() - start < 31_000);
+  assert.ok(Date.now() - start < 1_000);
 });
