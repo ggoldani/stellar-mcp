@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { AppConfig } from "./config.js";
 import { registerAccountTools } from "./tools/accounts.js";
+import { registerAssetTools } from "./tools/assets.js";
 import { registerPaymentTools } from "./tools/payments.js";
 
 export function createServer(config: AppConfig): McpServer {
@@ -12,6 +13,7 @@ export function createServer(config: AppConfig): McpServer {
 
   registerAccountTools(server, config);
   registerPaymentTools(server, config);
+  registerAssetTools(server, config);
 
   return server;
 }
