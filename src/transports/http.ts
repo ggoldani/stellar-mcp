@@ -1,11 +1,12 @@
 import { createServer as createHttpServer } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { AppConfig } from "../config.js";
 import { createServer } from "../server.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { NetworkError, StellarProtocolError } from "../lib/errors.js";
+import { redactSensitiveText } from "../lib/redact.js";
 
 interface HealthResponse {
   status: "ok" | "degraded" | "error";
@@ -51,6 +52,47 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
   });
   await mcpServer.connect(mcpTransport);
 
+  const requestHistory = new Map<string, number[]>();
+  let activeRequests = 0;
+  const windowMs = 60_000;
+
+  const getClientIp = (req: IncomingMessage): string => {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string" && forwarded.length > 0) {
+      return forwarded.split(",")[0].trim();
+    }
+    return req.socket.remoteAddress ?? "unknown";
+  };
+
+  const allowRequest = (req: IncomingMessage): { ok: true } | { ok: false; status: number; error: string } => {
+    if (activeRequests >= config.httpMaxConcurrent) {
+      return {
+        ok: false,
+        status: 503,
+        error: "Server is handling maximum concurrent requests. Retry shortly."
+      };
+    }
+
+    const ip = getClientIp(req);
+    const now = Date.now();
+    const cutoff = now - windowMs;
+    const history = requestHistory.get(ip) ?? [];
+    const fresh = history.filter((timestamp) => timestamp > cutoff);
+
+    if (fresh.length >= config.httpRateLimitPerMinute) {
+      requestHistory.set(ip, fresh);
+      return {
+        ok: false,
+        status: 429,
+        error: "Rate limit exceeded for current client identity."
+      };
+    }
+
+    fresh.push(now);
+    requestHistory.set(ip, fresh);
+    return { ok: true };
+  };
+
   const server = createHttpServer(async (req, res) => {
     if (req.url === "/health") {
       const health = await getHealthResponse(config);
@@ -68,6 +110,35 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
         return;
       }
 
+      const concurrencyAndRate = allowRequest(req);
+      if (!concurrencyAndRate.ok) {
+        res.writeHead(concurrencyAndRate.status, {
+          "content-type": "application/json"
+        });
+        res.end(JSON.stringify({ error: concurrencyAndRate.error }));
+        return;
+      }
+
+      if (req.method === "POST") {
+        const contentType = req.headers["content-type"] ?? "";
+        if (!String(contentType).toLowerCase().includes("application/json")) {
+          res.writeHead(415, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "POST /mcp requires application/json content-type." }));
+          return;
+        }
+
+        const contentLength = Number.parseInt(req.headers["content-length"] ?? "0", 10);
+        if (
+          Number.isFinite(contentLength) &&
+          contentLength > config.httpMaxPayloadBytes
+        ) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "MCP request payload exceeds configured maximum size." }));
+          return;
+        }
+      }
+
+      activeRequests += 1;
       try {
         await mcpTransport.handleRequest(req, res);
       } catch (error) {
@@ -76,7 +147,9 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
             ? error
             : new Error("Unhandled MCP transport error.");
         res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: mapped.message }));
+        res.end(JSON.stringify({ error: redactSensitiveText(mapped.message) }));
+      } finally {
+        activeRequests = Math.max(0, activeRequests - 1);
       }
       return;
     }
