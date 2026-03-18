@@ -9,8 +9,10 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { AppConfig } from "../config.js";
+import { decideSigningPolicy } from "../lib/autonomy.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { createStellarClients } from "../lib/stellar.js";
+import { estimateUsdcValue } from "../lib/valuation.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
 import {
   amountSchema,
@@ -95,19 +97,6 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         const validatedAsset = assetInputSchema.parse(asset);
         const validatedMemo = memo ? memoSchema.parse(memo) : undefined;
 
-        if (!config.secretKey) {
-          throw new Error(
-            "Transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
-          );
-        }
-
-        const sourceKeypair = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
-        if (sourceKeypair.publicKey() !== validatedFrom) {
-          throw new Error(
-            "Source account mismatch: `from` does not match STELLAR_SECRET_KEY public key."
-          );
-        }
-
         const stellar = createStellarClients(config);
         const sourceAccount = await stellar.runHorizon(
           stellar.horizon.loadAccount(validatedFrom),
@@ -135,14 +124,61 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         }
 
         const transaction = txBuilder.setTimeout(30).build();
-        transaction.sign(sourceKeypair);
+        const estimatedValueUsdc = await estimateUsdcValue({
+          amount: validatedAmount,
+          asset: validatedAsset,
+          config
+        });
+        const signingDecision = decideSigningPolicy({
+          autoSign: config.autoSign,
+          autoSignLimit: config.autoSignLimit,
+          valueUsdc: estimatedValueUsdc
+        });
 
-        const submitted = await stellar.runHorizon(
-          stellar.horizon.submitTransaction(transaction),
-          "submit_payment"
-        );
+        if (!signingDecision.shouldSign) {
+          const unsignedResponse = {
+            mode: signingDecision.mode,
+            reason: signingDecision.reason,
+            message: signingDecision.message,
+            transactionXdr: transaction.toXDR(),
+            ...(config.network === "testnet"
+              ? {
+                  dryRunWarning:
+                    "Network is testnet. Returned XDR is non-production and testnet state can reset periodically."
+                }
+              : {}),
+            _debug: sanitizeDebugPayload({
+              selectedFee: feeStats.fee_charged.p99,
+              valuationUsdc: estimatedValueUsdc ?? null
+            })
+          };
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(unsignedResponse, null, 2)
+              }
+            ]
+          };
+        }
+
+        if (!config.secretKey) {
+          throw new Error(
+            "Transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
+          );
+        }
+        const sourceKeypair = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
+        if (sourceKeypair.publicKey() !== validatedFrom) {
+          throw new Error(
+            "Source account mismatch: `from` does not match STELLAR_SECRET_KEY public key."
+          );
+        }
+        transaction.sign(sourceKeypair);
+        const submitted = await stellar.runHorizon(stellar.horizon.submitTransaction(transaction), "submit_payment");
 
         const response = {
+          mode: signingDecision.mode,
+          reason: signingDecision.reason,
           hash: submitted.hash,
           successful: submitted.successful,
           ...(config.network === "testnet"
@@ -153,7 +189,8 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
             : {}),
           _debug: sanitizeDebugPayload({
             transactionXdr: transaction.toXDR(),
-            selectedFee: feeStats.fee_charged.p99
+            selectedFee: feeStats.fee_charged.p99,
+            valuationUsdc: estimatedValueUsdc ?? null
           })
         };
 

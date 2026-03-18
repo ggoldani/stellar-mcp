@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import type { AppConfig } from "../config.js";
+import { decideSigningPolicy } from "../lib/autonomy.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
@@ -49,19 +50,6 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         const validatedIssuer = publicKeySchema.parse(asset_issuer);
         const validatedLimit = normalizeTrustlineLimit(limit);
 
-        if (!config.secretKey) {
-          throw new Error(
-            "Trustline transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
-          );
-        }
-
-        const signer = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
-        if (signer.publicKey() !== validatedAccount) {
-          throw new Error(
-            "Account mismatch: `account` does not match STELLAR_SECRET_KEY public key."
-          );
-        }
-
         const stellar = createStellarClients(config);
         const sourceAccount = await stellar.runHorizon(
           stellar.horizon.loadAccount(validatedAccount),
@@ -85,14 +73,56 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
           )
           .setTimeout(30)
           .build();
+        const signingDecision = decideSigningPolicy({
+          autoSign: config.autoSign,
+          autoSignLimit: config.autoSignLimit,
+          // Trustline operations do not carry a reliable USDC transfer value.
+          valueUsdc: undefined
+        });
 
+        if (!signingDecision.shouldSign) {
+          const unsignedResponse = {
+            mode: signingDecision.mode,
+            reason: signingDecision.reason,
+            message: signingDecision.message,
+            transactionXdr: transaction.toXDR(),
+            ...(config.network === "testnet"
+              ? {
+                  dryRunWarning:
+                    "Network is testnet. Returned XDR is non-production and testnet state can reset periodically."
+                }
+              : {}),
+            _debug: sanitizeDebugPayload({
+              selectedFee: feeStats.fee_charged.p99
+            })
+          };
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify(unsignedResponse, null, 2)
+              }
+            ]
+          };
+        }
+
+        if (!config.secretKey) {
+          throw new Error(
+            "Trustline transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
+          );
+        }
+        const signer = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
+        if (signer.publicKey() !== validatedAccount) {
+          throw new Error(
+            "Account mismatch: `account` does not match STELLAR_SECRET_KEY public key."
+          );
+        }
         transaction.sign(signer);
-        const submitted = await stellar.runHorizon(
-          stellar.horizon.submitTransaction(transaction),
-          "submit_trustline"
-        );
+        const submitted = await stellar.runHorizon(stellar.horizon.submitTransaction(transaction), "submit_trustline");
 
         const response = {
+          mode: signingDecision.mode,
+          reason: signingDecision.reason,
           hash: submitted.hash,
           successful: submitted.successful,
           ...(config.network === "testnet"

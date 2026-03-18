@@ -12,6 +12,11 @@ const EnvSchema = z.object({
   STELLAR_ALLOWED_HOSTS: z.string().optional(),
   STELLAR_TRUSTED_ANCHOR_DOMAINS: z.string().optional(),
   STELLAR_SECRET_KEY: z.string().optional(),
+  STELLAR_AUTO_SIGN: z.coerce.boolean().default(false),
+  STELLAR_AUTO_SIGN_LIMIT: z.coerce.number().min(0).default(0),
+  STELLAR_USDC_ISSUER: z
+    .string()
+    .default("GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN"),
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   STELLAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).default(30_000),
   MCP_HTTP_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
@@ -32,6 +37,9 @@ export interface AppConfig {
   rpcUrl?: string;
   sep38Url?: string;
   secretKey?: string;
+  autoSign: boolean;
+  autoSignLimit: number;
+  usdcIssuer: string;
   port: number;
   networkPassphrase: string;
   requestTimeoutMs: number;
@@ -145,6 +153,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rpcUrl,
     sep38Url,
     secretKey: parsed.STELLAR_SECRET_KEY,
+    autoSign: parsed.STELLAR_AUTO_SIGN,
+    autoSignLimit: parsed.STELLAR_AUTO_SIGN_LIMIT,
+    usdcIssuer: parsed.STELLAR_USDC_ISSUER,
     port: parsed.PORT,
     networkPassphrase: NETWORK_PASSPHRASE[parsed.STELLAR_NETWORK],
     requestTimeoutMs: parsed.STELLAR_REQUEST_TIMEOUT_MS,

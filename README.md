@@ -39,6 +39,9 @@ STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 STELLAR_RPC_URL=https://soroban-testnet.stellar.org
 STELLAR_SECRET_KEY=S...
 STELLAR_SEP38_URL=https://anchor.example.com/price
+STELLAR_AUTO_SIGN=false
+STELLAR_AUTO_SIGN_LIMIT=0
+STELLAR_USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 ```
 
 Security-focused controls:
@@ -51,6 +54,23 @@ MCP_HTTP_MAX_CONCURRENT=20
 MCP_HTTP_MAX_PAYLOAD_BYTES=262144
 MCP_HTTP_TRUST_PROXY=false
 ```
+
+## Deployment Security Modes
+
+Recommended default: Local-First.
+
+- Local-First (recommended): run over `stdio` or local `http-sse` on your machine, keep `STELLAR_SECRET_KEY` only in your local environment.
+- Cloud Read-Only: deploy with no `STELLAR_SECRET_KEY`; write tools return unsigned XDR for external signing.
+- Cloud Auto-Sign Hardened: only for mature ops teams with strict secret management, network controls, monitoring, and incident response.
+
+## Auto-Sign Policy
+
+Write tools (`stellar_submit_payment`, `stellar_create_trustline`) enforce:
+
+- `STELLAR_AUTO_SIGN=false` (default): never auto-sign; return unsigned XDR.
+- `STELLAR_AUTO_SIGN=true` and `STELLAR_AUTO_SIGN_LIMIT=0`: sign+submit automatically.
+- `STELLAR_AUTO_SIGN=true` and `STELLAR_AUTO_SIGN_LIMIT>0`: sign only when a reliable USDC valuation is available and within the limit.
+- Fail-closed: if reliable valuation is unavailable, the server returns unsigned XDR with an explicit confirmation message.
 
 ## Run
 

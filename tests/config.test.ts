@@ -12,6 +12,8 @@ test("loadConfig defaults to testnet passphrase and stdio transport", () => {
     config.networkPassphrase,
     "Test SDF Network ; September 2015"
   );
+  assert.equal(config.autoSign, false);
+  assert.equal(config.autoSignLimit, 0);
 });
 
 test("loadConfig derives mainnet passphrase from STELLAR_NETWORK", () => {
@@ -67,4 +69,14 @@ test("loadConfig allows custom override host when explicitly allowlisted", () =>
   });
 
   assert.equal(config.rpcUrl, "https://custom.stellar-provider.example");
+});
+
+test("loadConfig parses auto-sign envs", () => {
+  const config = loadConfig({
+    STELLAR_AUTO_SIGN: "true",
+    STELLAR_AUTO_SIGN_LIMIT: "25.5"
+  });
+
+  assert.equal(config.autoSign, true);
+  assert.equal(config.autoSignLimit, 25.5);
 });
