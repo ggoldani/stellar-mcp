@@ -8,7 +8,9 @@ const EnvSchema = z.object({
   STELLAR_NETWORK: z.enum(["mainnet", "testnet"]).default("testnet"),
   STELLAR_HORIZON_URL: z.string().url().optional(),
   STELLAR_RPC_URL: z.string().url().optional(),
+  STELLAR_SEP38_URL: z.string().url().optional(),
   STELLAR_ALLOWED_HOSTS: z.string().optional(),
+  STELLAR_TRUSTED_ANCHOR_DOMAINS: z.string().optional(),
   STELLAR_SECRET_KEY: z.string().optional(),
   PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   STELLAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).default(30_000),
@@ -28,6 +30,7 @@ export interface AppConfig {
   network: StellarNetwork;
   horizonUrl?: string;
   rpcUrl?: string;
+  sep38Url?: string;
   secretKey?: string;
   port: number;
   networkPassphrase: string;
@@ -37,6 +40,7 @@ export interface AppConfig {
   httpMaxConcurrent: number;
   httpMaxPayloadBytes: number;
   httpTrustProxy: boolean;
+  trustedAnchorDomains: string[];
 }
 
 const DEFAULT_ALLOWED_HOSTS = new Set<string>([
@@ -81,7 +85,7 @@ function parseAllowedHosts(raw?: string): string[] {
 }
 
 function validateEndpointOverride(
-  endpointName: "STELLAR_HORIZON_URL" | "STELLAR_RPC_URL",
+  endpointName: "STELLAR_HORIZON_URL" | "STELLAR_RPC_URL" | "STELLAR_SEP38_URL",
   value: string | undefined,
   allowedHosts: Set<string>
 ): string | undefined {
@@ -115,6 +119,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     ...customAllowedHosts
   ]);
 
+  const trustedAnchorDomains = parseAllowedHosts(parsed.STELLAR_TRUSTED_ANCHOR_DOMAINS);
+
   const horizonUrl = validateEndpointOverride(
     "STELLAR_HORIZON_URL",
     parsed.STELLAR_HORIZON_URL,
@@ -126,12 +132,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     parsed.STELLAR_RPC_URL,
     allowedHosts
   );
+  const sep38Url = validateEndpointOverride(
+    "STELLAR_SEP38_URL",
+    parsed.STELLAR_SEP38_URL,
+    allowedHosts
+  );
 
   return {
     transport: parsed.MCP_TRANSPORT ?? "stdio",
     network: parsed.STELLAR_NETWORK,
     horizonUrl,
     rpcUrl,
+    sep38Url,
     secretKey: parsed.STELLAR_SECRET_KEY,
     port: parsed.PORT,
     networkPassphrase: NETWORK_PASSPHRASE[parsed.STELLAR_NETWORK],
@@ -140,6 +152,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     httpRateLimitPerMinute: parsed.MCP_HTTP_RATE_LIMIT_PER_MIN,
     httpMaxConcurrent: parsed.MCP_HTTP_MAX_CONCURRENT,
     httpMaxPayloadBytes: parsed.MCP_HTTP_MAX_PAYLOAD_BYTES,
-    httpTrustProxy: parsed.MCP_HTTP_TRUST_PROXY
+    httpTrustProxy: parsed.MCP_HTTP_TRUST_PROXY,
+    trustedAnchorDomains
   };
 }
