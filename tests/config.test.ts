@@ -25,3 +25,25 @@ test("loadConfig derives mainnet passphrase from STELLAR_NETWORK", () => {
     "Public Global Stellar Network ; September 2015"
   );
 });
+
+test("loadConfig rejects insecure http override on mainnet", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_NETWORK: "mainnet",
+        STELLAR_HORIZON_URL: "http://horizon.stellar.org"
+      }),
+    /https/i
+  );
+});
+
+test("loadConfig rejects private host override", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_NETWORK: "testnet",
+        STELLAR_RPC_URL: "https://127.0.0.1:8000"
+      }),
+    /private/i
+  );
+});
