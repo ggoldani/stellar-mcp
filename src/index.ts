@@ -11,7 +11,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await startStdioServer();
+  await startStdioServer(config);
 }
 
 main().catch((error) => {

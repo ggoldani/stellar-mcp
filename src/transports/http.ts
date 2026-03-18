@@ -46,7 +46,7 @@ async function getHealthResponse(config: AppConfig): Promise<HealthResponse> {
 }
 
 export async function startHttpServer(config: AppConfig): Promise<Server> {
-  const mcpServer = createServer();
+  const mcpServer = createServer(config);
   const mcpTransport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
