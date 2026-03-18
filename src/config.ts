@@ -9,7 +9,7 @@ const EnvSchema = z.object({
   STELLAR_HORIZON_URL: z.string().url().optional(),
   STELLAR_RPC_URL: z.string().url().optional(),
   STELLAR_SECRET_KEY: z.string().optional(),
-  PORT: z.coerce.number().int().positive().default(3000),
+  PORT: z.coerce.number().int().min(0).max(65535).default(3000),
   STELLAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).default(30_000)
 });
 

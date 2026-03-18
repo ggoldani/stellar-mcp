@@ -1,7 +1,11 @@
 import { Horizon, Networks, rpc } from "@stellar/stellar-sdk";
 
 import type { AppConfig } from "../config.js";
-import { NetworkError } from "./errors.js";
+import {
+  NetworkError,
+  StellarProtocolError,
+  normalizeStellarError
+} from "./errors.js";
 
 const DEFAULT_ENDPOINTS = {
   testnet: {
@@ -21,6 +25,8 @@ export interface StellarClients {
   rpc: rpc.Server;
   networkPassphrase: string;
   withTimeout<T>(operation: Promise<T>, operationName: string): Promise<T>;
+  runHorizon<T>(operation: Promise<T>, operationName: string): Promise<T>;
+  runRpc<T>(operation: Promise<T>, operationName: string): Promise<T>;
 }
 
 export function createStellarClients(config: AppConfig): StellarClients {
@@ -38,6 +44,40 @@ export function createStellarClients(config: AppConfig): StellarClients {
         operationName,
         config.requestTimeoutMs
       );
+    },
+    async runHorizon<T>(operation: Promise<T>, operationName: string): Promise<T> {
+      try {
+        return await withTimeout(
+          operation,
+          `horizon:${operationName}`,
+          config.requestTimeoutMs
+        );
+      } catch (error) {
+        const normalized = normalizeStellarError(error);
+        if (normalized instanceof StellarProtocolError || normalized instanceof NetworkError) {
+          throw normalized;
+        }
+        throw new NetworkError(
+          `Horizon request failed: ${normalized.message}`
+        );
+      }
+    },
+    async runRpc<T>(operation: Promise<T>, operationName: string): Promise<T> {
+      try {
+        return await withTimeout(
+          operation,
+          `rpc:${operationName}`,
+          config.requestTimeoutMs
+        );
+      } catch (error) {
+        const normalized = normalizeStellarError(error);
+        if (normalized instanceof StellarProtocolError || normalized instanceof NetworkError) {
+          throw normalized;
+        }
+        throw new NetworkError(
+          `Soroban RPC request failed: ${normalized.message}`
+        );
+      }
     }
   };
 }
