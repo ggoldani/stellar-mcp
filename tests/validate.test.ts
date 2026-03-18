@@ -39,3 +39,22 @@ test("memoSchema rejects memo text larger than 28 bytes", () => {
     /Memo text exceeds 28-byte Stellar limit/
   );
 });
+
+test("memoSchema accepts valid hash memo", () => {
+  const parsed = memoSchema.parse({
+    type: "hash",
+    value: "a".repeat(64)
+  });
+  assert.equal(parsed.type, "hash");
+});
+
+test("memoSchema rejects memo id overflow above uint64", () => {
+  assert.throws(
+    () =>
+      memoSchema.parse({
+        type: "id",
+        value: "18446744073709551616"
+      }),
+    /uint64/i
+  );
+});

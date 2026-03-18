@@ -47,3 +47,24 @@ test("loadConfig rejects private host override", () => {
     /private/i
   );
 });
+
+test("loadConfig rejects IPv6 localhost override", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_NETWORK: "testnet",
+        STELLAR_RPC_URL: "https://[::1]:8000"
+      }),
+    /private/i
+  );
+});
+
+test("loadConfig allows custom override host when explicitly allowlisted", () => {
+  const config = loadConfig({
+    STELLAR_NETWORK: "testnet",
+    STELLAR_ALLOWED_HOSTS: "custom.stellar-provider.example",
+    STELLAR_RPC_URL: "https://custom.stellar-provider.example"
+  });
+
+  assert.equal(config.rpcUrl, "https://custom.stellar-provider.example");
+});

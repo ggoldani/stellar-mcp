@@ -14,7 +14,8 @@ const EnvSchema = z.object({
   STELLAR_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().max(30_000).default(30_000),
   MCP_HTTP_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
   MCP_HTTP_MAX_CONCURRENT: z.coerce.number().int().positive().default(20),
-  MCP_HTTP_MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262_144)
+  MCP_HTTP_MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262_144),
+  MCP_HTTP_TRUST_PROXY: z.coerce.boolean().default(false)
 });
 
 const NETWORK_PASSPHRASE: Record<StellarNetwork, string> = {
@@ -35,6 +36,7 @@ export interface AppConfig {
   httpRateLimitPerMinute: number;
   httpMaxConcurrent: number;
   httpMaxPayloadBytes: number;
+  httpTrustProxy: boolean;
 }
 
 const DEFAULT_ALLOWED_HOSTS = new Set<string>([
@@ -45,8 +47,12 @@ const DEFAULT_ALLOWED_HOSTS = new Set<string>([
 ]);
 
 function isPrivateOrLocalHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase();
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (normalized === "localhost" || normalized.endsWith(".local")) {
+    return true;
+  }
+
+  if (normalized === "::1" || normalized.startsWith("fe80:")) {
     return true;
   }
 
@@ -133,6 +139,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     allowedHosts: Array.from(allowedHosts),
     httpRateLimitPerMinute: parsed.MCP_HTTP_RATE_LIMIT_PER_MIN,
     httpMaxConcurrent: parsed.MCP_HTTP_MAX_CONCURRENT,
-    httpMaxPayloadBytes: parsed.MCP_HTTP_MAX_PAYLOAD_BYTES
+    httpMaxPayloadBytes: parsed.MCP_HTTP_MAX_PAYLOAD_BYTES,
+    httpTrustProxy: parsed.MCP_HTTP_TRUST_PROXY
   };
 }
