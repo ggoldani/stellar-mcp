@@ -51,7 +51,20 @@ const textMemoSchema = z
 
 const idMemoSchema = z.object({
   type: z.literal("id"),
-  value: z.string().regex(/^\d+$/, "Memo id must be an unsigned integer string.")
+  value: z
+    .string()
+    .regex(/^\d+$/, "Memo id must be an unsigned integer string.")
+    .refine(
+      (value) => {
+        try {
+          const parsed = BigInt(value);
+          return parsed >= 0n && parsed <= 18446744073709551615n;
+        } catch {
+          return false;
+        }
+      },
+      "Memo id must fit within uint64 range."
+    )
 });
 
 const hashMemoSchema = z.object({

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  mapUnknownError,
   mapStellarResultCodes,
   normalizeStellarError,
   NetworkError,
@@ -35,4 +36,15 @@ test("normalizeStellarError maps Horizon result_codes to StellarProtocolError", 
 
   assert.ok(mapped instanceof StellarProtocolError);
   assert.match(mapped.message, /source account does not have enough balance/i);
+});
+
+test("mapStellarResultCodes maps transaction-only failures", () => {
+  const mapped = mapStellarResultCodes("tx_too_late");
+  assert.ok(mapped instanceof StellarProtocolError);
+  assert.match(mapped.message, /transaction expired/i);
+});
+
+test("mapUnknownError wraps non-error throwables", () => {
+  const mapped = mapUnknownError("boom");
+  assert.equal(mapped.message, "Unexpected non-error exception thrown.");
 });

@@ -58,7 +58,7 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
 
   const getClientIp = (req: IncomingMessage): string => {
     const forwarded = req.headers["x-forwarded-for"];
-    if (typeof forwarded === "string" && forwarded.length > 0) {
+    if (config.httpTrustProxy && typeof forwarded === "string" && forwarded.length > 0) {
       return forwarded.split(",")[0].trim();
     }
     return req.socket.remoteAddress ?? "unknown";
@@ -90,11 +90,26 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
 
     fresh.push(now);
     requestHistory.set(ip, fresh);
+
+    // Best-effort pruning to avoid unbounded map growth.
+    if (requestHistory.size > 10_000) {
+      for (const [trackedIp, timestamps] of requestHistory.entries()) {
+        const alive = timestamps.filter((timestamp) => timestamp > cutoff);
+        if (alive.length === 0) {
+          requestHistory.delete(trackedIp);
+        } else {
+          requestHistory.set(trackedIp, alive);
+        }
+      }
+    }
+
     return { ok: true };
   };
 
   const server = createHttpServer(async (req, res) => {
-    if (req.url === "/health") {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+
+    if (url.pathname === "/health") {
       const health = await getHealthResponse(config);
       const statusCode =
         health.status === "ok" ? 200 : health.status === "degraded" ? 206 : 503;
@@ -103,7 +118,7 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
       return;
     }
 
-    if (req.url === "/mcp") {
+    if (url.pathname === "/mcp") {
       if (!req.method || !["GET", "POST", "DELETE"].includes(req.method)) {
         res.writeHead(405, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "Method not allowed" }));
@@ -127,7 +142,13 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
           return;
         }
 
-        const contentLength = Number.parseInt(req.headers["content-length"] ?? "0", 10);
+        if (typeof req.headers["content-length"] !== "string") {
+          res.writeHead(411, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "POST /mcp requires content-length header." }));
+          return;
+        }
+
+        const contentLength = Number.parseInt(req.headers["content-length"], 10);
         if (
           Number.isFinite(contentLength) &&
           contentLength > config.httpMaxPayloadBytes
@@ -146,8 +167,10 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
           error instanceof NetworkError || error instanceof StellarProtocolError
             ? error
             : new Error("Unhandled MCP transport error.");
-        res.writeHead(500, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: redactSensitiveText(mapped.message) }));
+        if (!res.headersSent) {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: redactSensitiveText(mapped.message) }));
+        }
       } finally {
         activeRequests = Math.max(0, activeRequests - 1);
       }
