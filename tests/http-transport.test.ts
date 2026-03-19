@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { validateMcpPostRequest } from "../src/transports/http.js";
 
-function requestWithHeaders(headers: Record<string, string>) {
+function requestWithHeaders(headers: Record<string, string | string[]>) {
   return {
     headers
   } as const;
@@ -15,6 +15,22 @@ test("validateMcpPostRequest rejects transfer-encoding", () => {
       "content-type": "application/json",
       "content-length": "10",
       "transfer-encoding": "chunked"
+    }) as never,
+    1024
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.status, 400);
+    assert.match(result.error, /transfer-encoding/i);
+  }
+});
+
+test("validateMcpPostRequest rejects transfer-encoding array", () => {
+  const result = validateMcpPostRequest(
+    requestWithHeaders({
+      "content-type": "application/json",
+      "content-length": "10",
+      "transfer-encoding": ["chunked"]
     }) as never,
     1024
   );

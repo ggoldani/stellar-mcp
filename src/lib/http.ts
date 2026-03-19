@@ -11,7 +11,7 @@ export function sanitizeUrlForLogs(input: string): string {
     parsed.hash = "";
     return parsed.toString();
   } catch {
-    return input;
+    return input.split("#")[0].split("?")[0];
   }
 }
 
