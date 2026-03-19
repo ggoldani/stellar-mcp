@@ -26,6 +26,10 @@ export function normalizeTrustlineLimit(limit: string | undefined): string {
   return amountSchema.parse(limit);
 }
 
+export function buildTrustlineAutoSignCappedMessage(limitUsdc: number): string {
+  return `Trustline operations do not have reliable USDC valuation. Under STELLAR_AUTO_SIGN_LIMIT=$${limitUsdc} USDC, explicit confirmation is required and unsigned XDR is returned.`;
+}
+
 /**
  * Register asset-focused MCP tools.
  *
@@ -81,10 +85,14 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         });
 
         if (!signingDecision.shouldSign) {
+          const message =
+            signingDecision.reason === "valuation_unavailable" && config.autoSignLimit > 0
+              ? buildTrustlineAutoSignCappedMessage(config.autoSignLimit)
+              : signingDecision.message;
           const unsignedResponse = {
             mode: signingDecision.mode,
             reason: signingDecision.reason,
-            message: signingDecision.message,
+            message,
             transactionXdr: transaction.toXDR(),
             ...(config.network === "testnet"
               ? {
