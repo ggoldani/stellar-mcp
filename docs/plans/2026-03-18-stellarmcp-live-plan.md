@@ -31,8 +31,12 @@ This file is the in-repo execution snapshot for implementation status and next s
   - clearer network passphrase guidance on `tx_bad_auth`.
 - Verification hardening:
   - added non-live autonomy smoke: `npm run smoke:autonomy:mock`.
+  - added live Tier-1 friendbot smoke: `npm run smoke:tier1:friendbot`.
+  - release gate executed successfully (`typecheck`, `test`, `smoke:phase1`, `smoke:autonomy:mock`, `smoke:tier1:friendbot`).
 - Repository hygiene:
   - removed local `stellarskills` mirror files to avoid drift.
+- Trustline capped auto-sign UX:
+  - kept strict fail-closed behavior and added explicit user-facing rationale message.
 
 ## In Progress
 
@@ -40,7 +44,6 @@ This file is the in-repo execution snapshot for implementation status and next s
 
 ## Next Steps
 
-- Execute live `smoke:tier1:testnet` when environment secrets are available.
-- Decide trustline policy UX under capped auto-sign (`STELLAR_AUTO_SIGN_LIMIT>0`):
-  - keep strict fail-closed as-is, or
-  - classify trustline as non-monetary and allow auto-sign when explicitly enabled.
+- Bump package version from `0.1.0` to align with current changelog state.
+- Run final release checks (`npm pack`) and publish when desired.
+- Optionally run `smoke:tier1:testnet` with dedicated persistent testnet keys as an additional external validation.
