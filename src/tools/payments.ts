@@ -1,5 +1,6 @@
 import {
   Asset,
+  Claimant,
   Keypair,
   Memo,
   Operation,
@@ -348,6 +349,185 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
             {
               type: "text",
               text: JSON.stringify(paths.slice(0, 5), null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_create_claimable_balance",
+    "Create a claimable balance that allows a destination to claim funds later.",
+    {
+      sourceAccount: publicKeySchema.describe("Account sending the funds"),
+      destinationAccount: publicKeySchema.describe("Account that can claim the funds"),
+      asset: assetInputSchema,
+      amount: z.string().describe("Amount to send")
+    },
+    async ({ sourceAccount, destinationAccount, asset, amount }) => {
+      try {
+        const stellar = createStellarClients(config);
+        const account = await stellar.runHorizon(
+          stellar.horizon.loadAccount(sourceAccount),
+          "load_source_account"
+        );
+
+        const builder = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: stellar.networkPassphrase
+        });
+
+        const assetObj = new Asset(
+          asset.type === "native" ? "XLM" : asset.code,
+          asset.type === "native" ? undefined : asset.issuer
+        );
+
+        builder.addOperation(
+          Operation.createClaimableBalance({
+            asset: assetObj,
+            amount: amount,
+            claimants: [
+              new Claimant(destinationAccount, Claimant.predicateUnconditional())
+            ]
+          })
+        );
+        builder.setTimeout(30);
+
+        const tx = builder.build();
+
+        const isUnsignedMode =
+          config.autoSignPolicy === "safe" ||
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
+          (!config.autoSignPolicy && !config.autoSign);
+
+        if (!isUnsignedMode && config.secretKey) {
+          tx.sign(Keypair.fromSecret(config.secretKey));
+        }
+
+        if (isUnsignedMode || !config.secretKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message:
+                    "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        const submission = await stellar.runHorizon(
+          stellar.horizon.submitTransaction(tx),
+          "submit_create_claimable_balance"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                hash: submission.hash,
+                ledger: submission.ledger,
+                _debug: sanitizeDebugPayload({
+                  networkPassphrase: stellar.networkPassphrase
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_claim_claimable_balance",
+    "Claim a claimable balance using its balance ID.",
+    {
+      sourceAccount: publicKeySchema.describe("Account claiming the funds"),
+      balanceId: z.string().describe("The ID of the claimable balance")
+    },
+    async ({ sourceAccount, balanceId }) => {
+      try {
+        const stellar = createStellarClients(config);
+        const account = await stellar.runHorizon(
+          stellar.horizon.loadAccount(sourceAccount),
+          "load_source_account"
+        );
+
+        const builder = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: stellar.networkPassphrase
+        });
+
+        builder.addOperation(
+          Operation.claimClaimableBalance({
+            balanceId
+          })
+        );
+        builder.setTimeout(30);
+
+        const tx = builder.build();
+
+        const isUnsignedMode =
+          config.autoSignPolicy === "safe" ||
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
+          (!config.autoSignPolicy && !config.autoSign);
+
+        if (!isUnsignedMode && config.secretKey) {
+          tx.sign(Keypair.fromSecret(config.secretKey));
+        }
+
+        if (isUnsignedMode || !config.secretKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message:
+                    "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        const submission = await stellar.runHorizon(
+          stellar.horizon.submitTransaction(tx),
+          "submit_claim_claimable_balance"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                hash: submission.hash,
+                ledger: submission.ledger,
+                _debug: sanitizeDebugPayload({
+                  networkPassphrase: stellar.networkPassphrase
+                })
+              }, null, 2)
             }
           ]
         };
