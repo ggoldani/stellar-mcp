@@ -102,4 +102,56 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
       }
     }
   );
+
+  server.tool(
+    "stellar_fund_account",
+    "Fund a Stellar testnet account with 10,000 testnet XLM using Friendbot.",
+    getAccountInputSchema,
+    async ({ publicKey }) => {
+      try {
+        if (config.network !== "testnet") {
+          throw new Error("Friendbot is only available on the testnet.");
+        }
+
+        const validatedPublicKey = publicKeySchema.parse(publicKey);
+
+        const response = await fetch(
+          `https://friendbot.stellar.org?addr=${validatedPublicKey}`,
+          { method: "GET" }
+        );
+
+        if (!response.ok) {
+          const body = await response.text();
+          throw new Error(`Friendbot failed (HTTP ${response.status}): ${body}`);
+        }
+
+        const data = await response.json();
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                message: "Account funded successfully with testnet XLM.",
+                hash: data.hash,
+                ledger: data.ledger
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: redactSensitiveText(mapped.message)
+            }
+          ]
+        };
+      }
+    }
+  );
 }

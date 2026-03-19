@@ -5,7 +5,8 @@ import {
   Networks,
   TransactionBuilder,
   rpc,
-  xdr
+  xdr,
+  nativeToScVal
 } from "@stellar/stellar-sdk";
 import { z } from "zod";
 
@@ -41,8 +42,6 @@ const invokeSorobanSchema = {
     .optional()
     .describe("List of arguments for the contract invocation.")
 };
-
-import { nativeToScVal } from "@stellar/stellar-sdk";
 
 // Helper for minimal native-to-ScVal mapping
 function parseArgToScVal(type: string, value: any): xdr.ScVal {
