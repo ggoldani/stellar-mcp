@@ -16,21 +16,19 @@ This file is the in-repo execution snapshot for implementation status and next s
 - Tier 1 launch tools: `stellar_get_account`, `stellar_submit_payment`, `stellar_create_trustline`, `stellar_get_fee_stats`.
 - Launch-critical SEP tools: `stellar_sep10_auth`, `stellar_get_sep38_quote`.
 - Documentation baseline in `README.md` and `CHANGELOG.md`.
+- Auto-sign policy with fail-closed valuation and unsigned-XDR fallback for write tools.
+- Local `stellarskills` mirror for in-repo consultation: `docs/skills/stellarskills/`.
 
 ## In Progress
 
-- Auto-sign autonomy policy integration:
-  - Added env configuration for `STELLAR_AUTO_SIGN`, `STELLAR_AUTO_SIGN_LIMIT`, and `STELLAR_USDC_ISSUER`.
-  - Added central signing policy decision engine with fail-closed behavior.
-  - Added USDC valuation utility with canonical-asset fast path and SEP-38 fallback.
-  - Applied policy flow to payment and trustline write tools.
-  - Added unit tests for autonomy and valuation helpers.
+- Stellarskills-guided hardening pass:
+  - SEP-10 discovery endpoint constraints (`https` + anchor-domain scope).
+  - Anchor memo advisory in credit-asset payment flow.
+  - Additional tests around hardening and memo guidance.
 
 ## Next Steps
 
-- Run full verification (`npm run typecheck`, `npm test`, `npm run smoke:phase1`).
-- Patch findings from tests/smoke and rerun until green.
-- Update `README.md` and `CHANGELOG.md` with:
-  - Local-first recommended deployment mode.
-  - Auto-sign behavior matrix and fail-closed valuation policy.
+- Run full verification (`npm run typecheck`, `npm test`, `npm run smoke:phase1`) after stellarskills-guided hardening updates.
+- Add a non-live autonomy smoke (`mock`) to validate unsigned-XDR policy without real keys.
 - Execute live `smoke:tier1:testnet` when environment secrets are available.
+- Extend error messaging matrix with additional anchor/SEP-focused guidance from mirrored skills.
