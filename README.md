@@ -1,21 +1,22 @@
 # StellarMCP
 
-Execution-grade MCP server for Stellar with agent-first DX and anchor-focused workflows.
+Execution-grade MCP server for the Stellar network, focused on agent-first Developer Experience (DX) and integrations with Anchors (SEPs) and Smart Contracts (Soroban).
 
 ## Features
 
-- Tier-1 launch tools:
+- Tier-1 foundation tools:
   - `stellar_get_account`
   - `stellar_submit_payment`
   - `stellar_create_trustline`
   - `stellar_get_fee_stats`
-- Launch differentiators:
+- Anchor and Smart Contract integrations:
   - `stellar_sep10_auth`
   - `stellar_get_sep38_quote`
-- Strict TypeScript, Zod input validation, actionable error mapping, sanitized `_debug`.
-- Transport support:
-  - `stdio` (Claude Desktop)
-  - Streamable HTTP/SSE (`/mcp`) for Cursor/Windsurf integrations.
+  - Full Soroban support (simulate, invoke, read)
+- Strict typing with TypeScript, robust input validation via Zod, actionable error mapping, and sanitized `_debug` outputs.
+- Multiple transport modes support:
+  - `stdio` (Ideal for Claude Desktop)
+  - Streamable HTTP/SSE via `/mcp` (Ideal for integrations like Cursor/Windsurf).
 
 ## Installation
 
@@ -26,13 +27,13 @@ npm run build
 
 ## Configuration
 
-Required baseline:
+Required baseline configuration:
 
 ```bash
-STELLAR_NETWORK=testnet
+STELLAR_NETWORK=testnet # mainnet or testnet
 ```
 
-Optional endpoints and signer:
+Optional endpoints and signer credentials:
 
 ```bash
 STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
@@ -55,40 +56,40 @@ MCP_HTTP_MAX_PAYLOAD_BYTES=262144
 MCP_HTTP_TRUST_PROXY=false
 ```
 
-If `MCP_HTTP_TRUST_PROXY=true`, run only behind a trusted proxy that overwrites `X-Forwarded-For`; otherwise client IP spoofing can weaken rate limiting.
+If `MCP_HTTP_TRUST_PROXY=true`, ensure the server runs behind a trusted proxy that overwrites the `X-Forwarded-For` header; otherwise, client IP spoofing can severely weaken rate-limiting controls.
 
 ## Deployment Security Modes
 
 Recommended default: Local-First.
 
-- Local-First (recommended): run over `stdio` or local `http-sse` on your machine, keep `STELLAR_SECRET_KEY` only in your local environment.
-- Cloud Read-Only: deploy with no `STELLAR_SECRET_KEY`; write tools return unsigned XDR for external signing.
-- Cloud Auto-Sign Hardened: only for mature ops teams with strict secret management, network controls, monitoring, and incident response.
+- Local-First (recommended): run over `stdio` or local `http-sse` on your machine. Keep your `STELLAR_SECRET_KEY` strictly within your local environment.
+- Cloud Read-Only: deploy without a `STELLAR_SECRET_KEY`. Write tools will return unsigned XDR payloads for external signing.
+- Cloud Auto-Sign Hardened: recommended only for mature operations teams with strict secret management, tight network controls, active monitoring, and incident response plans.
 
 ## Auto-Sign Policy
 
-Write tools (`stellar_submit_payment`, `stellar_create_trustline`) enforce:
+Write tools (e.g., `stellar_submit_payment`, `stellar_create_trustline`) enforce the following policies:
 
 - `STELLAR_AUTO_SIGN_POLICY=safe` (recommended default):
-  - force unsigned mode (`autoSign=false`, `limit=0`).
-  - all write tools return unsigned XDR.
+  - Forces unsigned mode (`autoSign=false`, `limit=0`).
+  - All write tools return unsigned XDR payloads only.
 - `STELLAR_AUTO_SIGN_POLICY=guarded`:
-  - force auto-sign enabled with a required positive cap (`STELLAR_AUTO_SIGN_LIMIT>0`).
-  - signs only when reliable USDC valuation is available and within the cap.
-  - fail-closed when valuation is unavailable.
+  - Forces auto-sign enabled, requiring a strictly positive cap (`STELLAR_AUTO_SIGN_LIMIT>0`).
+  - Signs a transaction only when a reliable USDC valuation is available and the value falls within the established limit.
+  - Fails closed (blocks signing) when an accurate valuation is unavailable.
 - `STELLAR_AUTO_SIGN_POLICY=expert`:
-  - force unlimited auto-sign (`autoSign=true`, `limit=0`).
-  - signs and submits all write transactions.
+  - Forces unlimited auto-sign (`autoSign=true`, `limit=0`).
+  - Automatically signs and submits all write transactions.
 
 Backward compatibility:
 
-- If `STELLAR_AUTO_SIGN_POLICY` is unset, legacy envs are respected:
+- If `STELLAR_AUTO_SIGN_POLICY` is unset, legacy environment variables are respected:
   - `STELLAR_AUTO_SIGN`
   - `STELLAR_AUTO_SIGN_LIMIT`
 
-## Run
+## Execution
 
-stdio mode:
+`stdio` mode:
 
 ```bash
 npm run start:stdio
@@ -100,7 +101,7 @@ HTTP/SSE mode:
 MCP_TRANSPORT=http-sse PORT=3000 npm run start:http
 ```
 
-## Client Examples
+## Client Integration Examples
 
 Claude Desktop (`stdio`):
 
@@ -119,7 +120,7 @@ Claude Desktop (`stdio`):
 }
 ```
 
-Cursor/Windsurf (`http-sse` via `/mcp`):
+Cursor / Windsurf (`http-sse` via `/mcp`):
 
 ```json
 {
@@ -131,27 +132,27 @@ Cursor/Windsurf (`http-sse` via `/mcp`):
 }
 ```
 
-## Verification
+## Testing & Verification
 
-Local foundation smoke:
+Local foundation smoke test:
 
 ```bash
 npm run smoke:phase1
 ```
 
-Autonomy policy smoke without real keys/network writes:
+Autonomy policy smoke test without real keys or network writes:
 
 ```bash
 npm run smoke:autonomy:mock
 ```
 
-Live Tier-1 smoke on testnet with ephemeral Friendbot-funded accounts (no personal env secrets):
+Live Tier-1 smoke test on testnet with ephemeral, Friendbot-funded accounts (uses no personal environment secrets):
 
 ```bash
 npm run smoke:tier1:friendbot
 ```
 
-Live Tier-1 smoke on testnet (performs real tx):
+Live Tier-1 smoke test on testnet (performs actual transactions):
 
 ```bash
 export STELLAR_SECRET_KEY=S...
