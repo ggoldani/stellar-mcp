@@ -4,12 +4,24 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function sanitizeUrlForLogs(input: string): string {
+  try {
+    const parsed = new URL(input);
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return input;
+  }
+}
+
 export async function fetchJsonWithTimeout<T>(
   input: string,
   init: RequestInit,
   timeoutMs: number,
   retries = 2
 ): Promise<T> {
+  const safeUrl = sanitizeUrlForLogs(input);
   let attempt = 0;
   let lastError: Error | undefined;
 
@@ -25,7 +37,7 @@ export async function fetchJsonWithTimeout<T>(
       if (!response.ok) {
         const body = await response.text();
         throw new NetworkError(
-          `HTTP ${response.status} from ${input}. Response body: ${body.slice(0, 256)}`
+          `HTTP ${response.status} from ${safeUrl}. Response body: ${body.slice(0, 256)}`
         );
       }
 
@@ -34,7 +46,7 @@ export async function fetchJsonWithTimeout<T>(
       const message =
         error instanceof Error ? error.message : "Unknown HTTP request error";
       lastError = new NetworkError(
-        `Network request failed for ${input}: ${message}`
+        `Network request failed for ${safeUrl}: ${message}`
       );
       if (attempt === retries) {
         break;
@@ -46,7 +58,7 @@ export async function fetchJsonWithTimeout<T>(
     }
   }
 
-  throw lastError ?? new NetworkError(`Network request failed for ${input}.`);
+  throw lastError ?? new NetworkError(`Network request failed for ${safeUrl}.`);
 }
 
 export async function fetchTextWithTimeout(
@@ -55,6 +67,7 @@ export async function fetchTextWithTimeout(
   timeoutMs: number,
   retries = 2
 ): Promise<string> {
+  const safeUrl = sanitizeUrlForLogs(input);
   let attempt = 0;
   let lastError: Error | undefined;
 
@@ -70,7 +83,7 @@ export async function fetchTextWithTimeout(
       if (!response.ok) {
         const body = await response.text();
         throw new NetworkError(
-          `HTTP ${response.status} from ${input}. Response body: ${body.slice(0, 256)}`
+          `HTTP ${response.status} from ${safeUrl}. Response body: ${body.slice(0, 256)}`
         );
       }
 
@@ -79,7 +92,7 @@ export async function fetchTextWithTimeout(
       const message =
         error instanceof Error ? error.message : "Unknown HTTP request error";
       lastError = new NetworkError(
-        `Network request failed for ${input}: ${message}`
+        `Network request failed for ${safeUrl}: ${message}`
       );
       if (attempt === retries) {
         break;
@@ -91,5 +104,5 @@ export async function fetchTextWithTimeout(
     }
   }
 
-  throw lastError ?? new NetworkError(`Network request failed for ${input}.`);
+  throw lastError ?? new NetworkError(`Network request failed for ${safeUrl}.`);
 }

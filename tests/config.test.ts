@@ -62,6 +62,17 @@ test("loadConfig rejects IPv6 localhost override", () => {
   );
 });
 
+test("loadConfig does not classify malformed IPv4 as private host", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_NETWORK: "testnet",
+        STELLAR_RPC_URL: "https://172.16.0.256:8000"
+      }),
+    /invalid url/i
+  );
+});
+
 test("loadConfig allows custom override host when explicitly allowlisted", () => {
   const config = loadConfig({
     STELLAR_NETWORK: "testnet",

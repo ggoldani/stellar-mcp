@@ -14,6 +14,10 @@ test("normalizeTrustlineLimit validates provided trustline limit", () => {
   assert.equal(normalizeTrustlineLimit("1000.5"), "1000.5");
 });
 
+test("normalizeTrustlineLimit allows zero to revoke trustline", () => {
+  assert.equal(normalizeTrustlineLimit("0"), "0");
+});
+
 test("buildTrustlineAutoSignCappedMessage describes fail-closed trustline behavior", () => {
   const message = buildTrustlineAutoSignCappedMessage(10);
   assert.match(message, /trustline operations do not have reliable usdc valuation/i);

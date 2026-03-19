@@ -23,6 +23,9 @@ export function normalizeTrustlineLimit(limit: string | undefined): string {
   if (!limit) {
     return "922337203685.4775807";
   }
+  if (limit.trim() === "0") {
+    return "0";
+  }
   return amountSchema.parse(limit);
 }
 

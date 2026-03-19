@@ -74,7 +74,13 @@ function isPrivateOrLocalHost(hostname: string): boolean {
     return false;
   }
 
-  const [a, b] = normalized.split(".").map((segment) => Number.parseInt(segment, 10));
+  const octets = normalized
+    .split(".")
+    .map((segment) => Number.parseInt(segment, 10));
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+  const [a, b] = octets;
   return (
     a === 10 ||
     a === 127 ||
