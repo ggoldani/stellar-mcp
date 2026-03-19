@@ -3,6 +3,7 @@ import {
   Keypair,
   Memo,
   Operation,
+  Transaction,
   TransactionBuilder
 } from "@stellar/stellar-sdk";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -225,6 +226,73 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
               text: redactSensitiveText(mapped.message)
             }
           ]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_submit_transaction_xdr",
+    "Submit a fully formed transaction XDR (base64) to the Stellar network. Optionally signs if STELLAR_SECRET_KEY is configured and autoSignPolicy allows.",
+    {
+      xdr: z.string().describe("Base64 encoded transaction XDR")
+    },
+    async ({ xdr }) => {
+      try {
+        const stellar = createStellarClients(config);
+        const transaction = new Transaction(xdr, stellar.networkPassphrase);
+
+        const isUnsignedMode =
+          config.autoSignPolicy === "safe" ||
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
+          (!config.autoSignPolicy && !config.autoSign);
+
+        if (!isUnsignedMode && config.secretKey) {
+          const keypair = Keypair.fromSecret(config.secretKey);
+          transaction.sign(keypair);
+        }
+
+        if (isUnsignedMode || !config.secretKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message:
+                    "Transaction requires signatures or policy blocks auto-signing. Please sign and submit this XDR externally.",
+                  unsignedXdr: transaction.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        const submission = await stellar.runHorizon(
+          stellar.horizon.submitTransaction(transaction),
+          "submit_transaction_xdr"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                hash: submission.hash,
+                ledger: submission.ledger,
+                _debug: sanitizeDebugPayload({
+                  networkPassphrase: stellar.networkPassphrase
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
         };
       }
     }
