@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   assertTrustedAnchor,
+  buildSep10ChallengeUrl,
   normalizeAnchorDomain,
   parseTomlValue,
   validateDiscoveredWebAuthEndpoint
@@ -59,5 +60,37 @@ test("validateDiscoveredWebAuthEndpoint rejects unrelated host", () => {
         "anchor.example.com"
       ),
     /anchor domain/i
+  );
+});
+
+test("buildSep10ChallengeUrl preserves existing query params", () => {
+  const url = buildSep10ChallengeUrl(
+    "https://api.anchor.example.com/auth?client_name=stellar",
+    "GABC123"
+  );
+  assert.equal(
+    url,
+    "https://api.anchor.example.com/auth?client_name=stellar&account=GABC123"
+  );
+});
+
+test("normalizeAnchorDomain rejects domain with path", () => {
+  assert.throws(
+    () => normalizeAnchorDomain("anchor.example.com/path"),
+    /host/i
+  );
+});
+
+test("normalizeAnchorDomain rejects domain with query", () => {
+  assert.throws(
+    () => normalizeAnchorDomain("anchor.example.com?foo=bar"),
+    /host/i
+  );
+});
+
+test("normalizeAnchorDomain rejects domain with explicit port", () => {
+  assert.throws(
+    () => normalizeAnchorDomain("anchor.example.com:8443"),
+    /host/i
   );
 });

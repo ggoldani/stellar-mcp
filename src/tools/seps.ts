@@ -35,8 +35,28 @@ interface Sep38PriceResponse {
 }
 
 export function normalizeAnchorDomain(anchorDomain: string): string {
-  const trimmed = anchorDomain.trim().replace(/^https?:\/\//i, "");
-  return trimmed.replace(/\/+$/, "");
+  const raw = anchorDomain.trim();
+  if (!raw) {
+    throw new Error("anchorDomain must be a non-empty host.");
+  }
+
+  const hasScheme = /^https?:\/\//i.test(raw);
+  const parsed = new URL(hasScheme ? raw : `https://${raw}`);
+  const hasUnexpectedParts =
+    parsed.pathname !== "/" ||
+    parsed.search.length > 0 ||
+    parsed.hash.length > 0 ||
+    parsed.port.length > 0 ||
+    parsed.username.length > 0 ||
+    parsed.password.length > 0;
+
+  if (hasUnexpectedParts) {
+    throw new Error(
+      "anchorDomain must be a host only (no path, query, fragment, credentials, or port)."
+    );
+  }
+
+  return parsed.hostname.toLowerCase();
 }
 
 export function parseTomlValue(rawToml: string, key: string): string | undefined {
@@ -76,6 +96,12 @@ export function validateDiscoveredWebAuthEndpoint(
     );
   }
   return parsed.toString();
+}
+
+export function buildSep10ChallengeUrl(webAuthEndpoint: string, publicKey: string): string {
+  const challengeUrl = new URL(webAuthEndpoint);
+  challengeUrl.searchParams.set("account", publicKey);
+  return challengeUrl.toString();
 }
 
 /**
@@ -131,7 +157,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
         );
 
         const challenge = await fetchJsonWithTimeout<Sep10ChallengeResponse>(
-          `${safeWebAuthEndpoint}?account=${encodeURIComponent(validatedPublicKey)}`,
+          buildSep10ChallengeUrl(safeWebAuthEndpoint, validatedPublicKey),
           { method: "GET", headers: { accept: "application/json" } },
           config.requestTimeoutMs
         );
