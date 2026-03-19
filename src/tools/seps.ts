@@ -20,12 +20,12 @@ const sep38InputSchema = {
 };
 
 interface Sep10ChallengeResponse {
-  transaction: string;
-  network_passphrase: string;
+  transaction?: string;
+  network_passphrase?: string;
 }
 
 interface Sep10TokenResponse {
-  token: string;
+  token?: string;
 }
 
 interface Sep38PriceResponse {
@@ -104,6 +104,34 @@ export function buildSep10ChallengeUrl(webAuthEndpoint: string, publicKey: strin
   return challengeUrl.toString();
 }
 
+export function validateSep10ChallengePayload(
+  payload: Sep10ChallengeResponse,
+  expectedNetworkPassphrase: string
+): { transaction: string; networkPassphrase: string } {
+  if (!payload.transaction || payload.transaction.trim().length === 0) {
+    throw new Error("SEP-10 challenge response is invalid: missing challenge transaction.");
+  }
+  if (!payload.network_passphrase || payload.network_passphrase.trim().length === 0) {
+    throw new Error("SEP-10 challenge response is invalid: missing network passphrase.");
+  }
+  if (payload.network_passphrase !== expectedNetworkPassphrase) {
+    throw new Error(
+      "SEP-10 challenge response has unexpected network passphrase for current Stellar network."
+    );
+  }
+  return {
+    transaction: payload.transaction,
+    networkPassphrase: payload.network_passphrase
+  };
+}
+
+export function extractSep10Token(payload: Sep10TokenResponse): string {
+  if (!payload.token || payload.token.trim().length === 0) {
+    throw new Error("SEP-10 auth response did not return a token.");
+  }
+  return payload.token;
+}
+
 /**
  * Register SEP-focused tools.
  *
@@ -161,10 +189,14 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
           { method: "GET", headers: { accept: "application/json" } },
           config.requestTimeoutMs
         );
+        const challengePayload = validateSep10ChallengePayload(
+          challenge,
+          config.networkPassphrase
+        );
 
         const challengeTx = new Transaction(
-          challenge.transaction,
-          challenge.network_passphrase
+          challengePayload.transaction,
+          challengePayload.networkPassphrase
         );
         challengeTx.sign(signer);
 
@@ -179,7 +211,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
         );
 
         const response = {
-          token: tokenResponse.token,
+          token: extractSep10Token(tokenResponse),
           ...(config.network === "testnet"
             ? {
                 dryRunWarning:

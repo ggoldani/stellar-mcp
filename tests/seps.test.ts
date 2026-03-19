@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   assertTrustedAnchor,
   buildSep10ChallengeUrl,
+  extractSep10Token,
   normalizeAnchorDomain,
   parseTomlValue,
+  validateSep10ChallengePayload,
   validateDiscoveredWebAuthEndpoint
 } from "../src/tools/seps.js";
 
@@ -93,4 +95,51 @@ test("normalizeAnchorDomain rejects domain with explicit port", () => {
     () => normalizeAnchorDomain("anchor.example.com:8443"),
     /host/i
   );
+});
+
+test("validateSep10ChallengePayload accepts valid payload for expected network", () => {
+  const payload = validateSep10ChallengePayload(
+    {
+      transaction: "AAAA...",
+      network_passphrase: "Test SDF Network ; September 2015"
+    },
+    "Test SDF Network ; September 2015"
+  );
+  assert.equal(payload.transaction, "AAAA...");
+});
+
+test("validateSep10ChallengePayload rejects missing transaction", () => {
+  assert.throws(
+    () =>
+      validateSep10ChallengePayload(
+        {
+          network_passphrase: "Test SDF Network ; September 2015"
+        },
+        "Test SDF Network ; September 2015"
+      ),
+    /challenge transaction/i
+  );
+});
+
+test("validateSep10ChallengePayload rejects network mismatch", () => {
+  assert.throws(
+    () =>
+      validateSep10ChallengePayload(
+        {
+          transaction: "AAAA...",
+          network_passphrase: "Public Global Stellar Network ; September 2015"
+        },
+        "Test SDF Network ; September 2015"
+      ),
+    /network passphrase/i
+  );
+});
+
+test("extractSep10Token returns token when present", () => {
+  const token = extractSep10Token({ token: "jwt-token" });
+  assert.equal(token, "jwt-token");
+});
+
+test("extractSep10Token rejects missing token", () => {
+  assert.throws(() => extractSep10Token({}), /did not return a token/i);
 });
