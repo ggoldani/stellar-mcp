@@ -297,4 +297,67 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
       }
     }
   );
+
+  server.tool(
+    "stellar_find_path_receive",
+    "Discover the best exchange path to receive a specific amount of a destination asset by sending a source asset using the Stellar DEX.",
+    {
+      sourceAssets: z
+        .array(assetInputSchema)
+        .describe("List of potential source assets to send"),
+      destinationAsset: assetInputSchema.describe("The asset you want to receive"),
+      destinationAmount: z.string().describe("The exact amount of destination asset to receive")
+    },
+    async ({ sourceAssets, destinationAsset, destinationAmount }) => {
+      try {
+        const stellar = createStellarClients(config);
+
+        const destAssetObj = new Asset(
+          destinationAsset.type === "native" ? "XLM" : destinationAsset.code,
+          destinationAsset.type === "native" ? undefined : destinationAsset.issuer
+        );
+
+        let paths: any[] = [];
+
+        for (const sourceAsset of sourceAssets) {
+          const sourceAssetObj = new Asset(
+            sourceAsset.type === "native" ? "XLM" : sourceAsset.code,
+            sourceAsset.type === "native" ? undefined : sourceAsset.issuer
+          );
+
+          try {
+            const page = await stellar.runHorizon(
+              stellar.horizon.strictReceivePaths(
+                [sourceAssetObj],
+                destAssetObj,
+                destinationAmount
+              ).call(),
+              "strict_receive_paths"
+            );
+            paths = paths.concat(page.records);
+          } catch (e) {
+            // Ignore if no path found for one of the source assets
+          }
+        }
+
+        // Sort by amount needed from source (cheapest first)
+        paths.sort((a, b) => Number.parseFloat(a.source_amount) - Number.parseFloat(b.source_amount));
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(paths.slice(0, 5), null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
 }

@@ -1,4 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Transaction } from "@stellar/stellar-sdk";
+import { z } from "zod";
 
 import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
@@ -62,6 +64,64 @@ export function registerNetworkTools(server: McpServer, config: AppConfig): void
             {
               type: "text",
               text: JSON.stringify(response, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: redactSensitiveText(mapped.message)
+            }
+          ]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_decode_xdr",
+    "Decode a base64 encoded Stellar transaction XDR into a readable JSON format showing operations and parameters.",
+    {
+      xdr: z.string().describe("Base64 encoded transaction XDR")
+    },
+    async ({ xdr }) => {
+      try {
+        const stellar = createStellarClients(config);
+
+        const transaction = new Transaction(xdr, stellar.networkPassphrase);
+
+        const decoded = {
+          source: transaction.source,
+          fee: transaction.fee,
+          sequence: transaction.sequence,
+          memo: transaction.memo.type === "none" ? null : {
+            type: transaction.memo.type,
+            value: transaction.memo.value
+          },
+          timeBounds: transaction.timeBounds ? {
+            minTime: transaction.timeBounds.minTime,
+            maxTime: transaction.timeBounds.maxTime
+          } : null,
+          operations: transaction.operations.map(op => ({
+            ...op,
+            _type: op.type,
+            _source: op.source
+          })),
+          signaturesCount: transaction.signatures.length,
+          _debug: sanitizeDebugPayload({
+            networkPassphrase: stellar.networkPassphrase
+          })
+        };
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(decoded, null, 2)
             }
           ]
         };
