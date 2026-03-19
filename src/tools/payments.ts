@@ -609,3 +609,13 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
     }
   );
 }
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+}
