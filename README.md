@@ -55,6 +55,8 @@ MCP_HTTP_MAX_PAYLOAD_BYTES=262144
 MCP_HTTP_TRUST_PROXY=false
 ```
 
+If `MCP_HTTP_TRUST_PROXY=true`, run only behind a trusted proxy that overwrites `X-Forwarded-For`; otherwise client IP spoofing can weaken rate limiting.
+
 ## Deployment Security Modes
 
 Recommended default: Local-First.

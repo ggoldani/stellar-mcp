@@ -17,6 +17,71 @@ interface HealthResponse {
   version: string;
 }
 
+interface PostValidationResultOk {
+  ok: true;
+  contentLength: number;
+}
+
+interface PostValidationResultError {
+  ok: false;
+  status: number;
+  error: string;
+}
+
+export type PostValidationResult = PostValidationResultOk | PostValidationResultError;
+
+export function validateMcpPostRequest(
+  req: IncomingMessage,
+  maxPayloadBytes: number
+): PostValidationResult {
+  const transferEncoding = req.headers["transfer-encoding"];
+  if (typeof transferEncoding === "string" && transferEncoding.trim().length > 0) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "POST /mcp does not support transfer-encoding. Send a bounded request with content-length."
+    };
+  }
+
+  const contentType = req.headers["content-type"] ?? "";
+  if (!String(contentType).toLowerCase().includes("application/json")) {
+    return {
+      ok: false,
+      status: 415,
+      error: "POST /mcp requires application/json content-type."
+    };
+  }
+
+  const rawLength = req.headers["content-length"];
+  if (typeof rawLength !== "string") {
+    return {
+      ok: false,
+      status: 411,
+      error: "POST /mcp requires content-length header."
+    };
+  }
+
+  const contentLength = Number(rawLength);
+  if (!Number.isFinite(contentLength) || !Number.isInteger(contentLength) || contentLength < 0) {
+    return {
+      ok: false,
+      status: 400,
+      error: "POST /mcp has invalid content-length header."
+    };
+  }
+
+  if (contentLength > maxPayloadBytes) {
+    return {
+      ok: false,
+      status: 413,
+      error: "MCP request payload exceeds configured maximum size."
+    };
+  }
+
+  return { ok: true, contentLength };
+}
+
 async function getHealthResponse(config: AppConfig): Promise<HealthResponse> {
   const clients = createStellarClients(config);
 
@@ -135,26 +200,10 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
       }
 
       if (req.method === "POST") {
-        const contentType = req.headers["content-type"] ?? "";
-        if (!String(contentType).toLowerCase().includes("application/json")) {
-          res.writeHead(415, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "POST /mcp requires application/json content-type." }));
-          return;
-        }
-
-        if (typeof req.headers["content-length"] !== "string") {
-          res.writeHead(411, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "POST /mcp requires content-length header." }));
-          return;
-        }
-
-        const contentLength = Number.parseInt(req.headers["content-length"], 10);
-        if (
-          Number.isFinite(contentLength) &&
-          contentLength > config.httpMaxPayloadBytes
-        ) {
-          res.writeHead(413, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "MCP request payload exceeds configured maximum size." }));
+        const postValidation = validateMcpPostRequest(req, config.httpMaxPayloadBytes);
+        if (!postValidation.ok) {
+          res.writeHead(postValidation.status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: postValidation.error }));
           return;
         }
       }
