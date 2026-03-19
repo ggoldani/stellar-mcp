@@ -17,7 +17,7 @@ This file is the in-repo execution snapshot for implementation status and next s
 - Launch-critical SEP tools: `stellar_sep10_auth`, `stellar_get_sep38_quote`.
 - Documentation baseline in `README.md` and `CHANGELOG.md`.
 - Auto-sign policy with fail-closed valuation and unsigned-XDR fallback for write tools.
-- Local `stellarskills` mirror for in-repo consultation: `docs/skills/stellarskills/`.
+- Stellarskills-aligned hardening via upstream source URLs (without local mirror in repo).
 
 ## In Progress
 
@@ -31,4 +31,4 @@ This file is the in-repo execution snapshot for implementation status and next s
 - Run full verification (`npm run typecheck`, `npm test`, `npm run smoke:phase1`) after stellarskills-guided hardening updates.
 - Add a non-live autonomy smoke (`mock`) to validate unsigned-XDR policy without real keys.
 - Execute live `smoke:tier1:testnet` when environment secrets are available.
-- Extend error messaging matrix with additional anchor/SEP-focused guidance from mirrored skills.
+- Extend error messaging matrix with additional anchor/SEP-focused guidance from upstream `stellarskills` skills.
