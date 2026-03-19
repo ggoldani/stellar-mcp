@@ -17,6 +17,7 @@ This file is the in-repo execution snapshot for implementation status and next s
 - Launch-critical SEP tools: `stellar_sep10_auth`, `stellar_get_sep38_quote`.
 - Documentation baseline in `README.md` and `CHANGELOG.md`.
 - Auto-sign policy with fail-closed valuation and unsigned-XDR fallback for write tools.
+- 3-level auto-sign policy runtime (`safe`, `guarded`, `expert`) with legacy env compatibility.
 - Stellarskills-aligned hardening via upstream source URLs (without local mirror in repo).
 - SEP-10 hardening:
   - discovered `WEB_AUTH_ENDPOINT` constrained to `https` and anchor domain scope.

@@ -14,6 +14,7 @@ test("loadConfig defaults to testnet passphrase and stdio transport", () => {
   );
   assert.equal(config.autoSign, false);
   assert.equal(config.autoSignLimit, 0);
+  assert.equal(config.autoSignPolicy, "legacy");
 });
 
 test("loadConfig derives mainnet passphrase from STELLAR_NETWORK", () => {
@@ -79,4 +80,50 @@ test("loadConfig parses auto-sign envs", () => {
 
   assert.equal(config.autoSign, true);
   assert.equal(config.autoSignLimit, 25.5);
+  assert.equal(config.autoSignPolicy, "legacy");
+});
+
+test("loadConfig policy safe forces unsigned mode", () => {
+  const config = loadConfig({
+    STELLAR_AUTO_SIGN_POLICY: "safe",
+    STELLAR_AUTO_SIGN: "true",
+    STELLAR_AUTO_SIGN_LIMIT: "999"
+  });
+
+  assert.equal(config.autoSignPolicy, "safe");
+  assert.equal(config.autoSign, false);
+  assert.equal(config.autoSignLimit, 0);
+});
+
+test("loadConfig policy guarded requires positive limit and enables auto-sign", () => {
+  const config = loadConfig({
+    STELLAR_AUTO_SIGN_POLICY: "guarded",
+    STELLAR_AUTO_SIGN_LIMIT: "10"
+  });
+
+  assert.equal(config.autoSignPolicy, "guarded");
+  assert.equal(config.autoSign, true);
+  assert.equal(config.autoSignLimit, 10);
+});
+
+test("loadConfig policy guarded rejects missing positive limit", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_AUTO_SIGN_POLICY: "guarded",
+        STELLAR_AUTO_SIGN_LIMIT: "0"
+      }),
+    /requires STELLAR_AUTO_SIGN_LIMIT > 0/i
+  );
+});
+
+test("loadConfig policy expert enables unlimited auto-sign", () => {
+  const config = loadConfig({
+    STELLAR_AUTO_SIGN_POLICY: "expert",
+    STELLAR_AUTO_SIGN_LIMIT: "15"
+  });
+
+  assert.equal(config.autoSignPolicy, "expert");
+  assert.equal(config.autoSign, true);
+  assert.equal(config.autoSignLimit, 0);
 });

@@ -39,7 +39,7 @@ STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
 STELLAR_RPC_URL=https://soroban-testnet.stellar.org
 STELLAR_SECRET_KEY=S...
 STELLAR_SEP38_URL=https://anchor.example.com/price
-STELLAR_AUTO_SIGN=false
+STELLAR_AUTO_SIGN_POLICY=safe
 STELLAR_AUTO_SIGN_LIMIT=0
 STELLAR_USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
 ```
@@ -67,10 +67,22 @@ Recommended default: Local-First.
 
 Write tools (`stellar_submit_payment`, `stellar_create_trustline`) enforce:
 
-- `STELLAR_AUTO_SIGN=false` (default): never auto-sign; return unsigned XDR.
-- `STELLAR_AUTO_SIGN=true` and `STELLAR_AUTO_SIGN_LIMIT=0`: sign+submit automatically.
-- `STELLAR_AUTO_SIGN=true` and `STELLAR_AUTO_SIGN_LIMIT>0`: sign only when a reliable USDC valuation is available and within the limit.
-- Fail-closed: if reliable valuation is unavailable, the server returns unsigned XDR with an explicit confirmation message.
+- `STELLAR_AUTO_SIGN_POLICY=safe` (recommended default):
+  - force unsigned mode (`autoSign=false`, `limit=0`).
+  - all write tools return unsigned XDR.
+- `STELLAR_AUTO_SIGN_POLICY=guarded`:
+  - force auto-sign enabled with a required positive cap (`STELLAR_AUTO_SIGN_LIMIT>0`).
+  - signs only when reliable USDC valuation is available and within the cap.
+  - fail-closed when valuation is unavailable.
+- `STELLAR_AUTO_SIGN_POLICY=expert`:
+  - force unlimited auto-sign (`autoSign=true`, `limit=0`).
+  - signs and submits all write transactions.
+
+Backward compatibility:
+
+- If `STELLAR_AUTO_SIGN_POLICY` is unset, legacy envs are respected:
+  - `STELLAR_AUTO_SIGN`
+  - `STELLAR_AUTO_SIGN_LIMIT`
 
 ## Run
 
