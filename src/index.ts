@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { loadConfig } from "./config.js";
+import { redactSensitiveText } from "./lib/redact.js";
 import { startHttpServer } from "./transports/http.js";
 import { startStdioServer } from "./transports/stdio.js";
 
@@ -15,6 +16,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error("Fatal startup error:", error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("Fatal startup error:", redactSensitiveText(message));
   process.exit(1);
 });
