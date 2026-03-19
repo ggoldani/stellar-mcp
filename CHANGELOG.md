@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.2 - 2026-03-18
+
+- Harden SEP-10 flow:
+  - enforce strict anchor-domain host input (`anchorDomain` host-only validation).
+  - validate discovered `WEB_AUTH_ENDPOINT` is `https` and scoped to anchor domain/subdomain.
+  - preserve existing query params when building challenge URL.
+  - validate challenge payload fields and expected network passphrase before signing.
+  - fail fast if SEP-10 token response omits `token`.
+- Improve payment/anchor DX with advisory on credit-asset payments without memo.
+- Expand actionable error mapping guidance for:
+  - `tx_no_source_account`
+  - `op_malformed`
+  - `tx_bad_auth` with explicit network passphrase mismatch hint.
+- Add non-live autonomy smoke verification:
+  - `npm run smoke:autonomy:mock`
+- Remove local copied `stellarskills` mirror files from repo to avoid documentation drift (use upstream sources directly).
+
 ## 0.1.1 - 2026-03-18
 
 - Remove plan bifurcation by keeping a single authoritative planning document.
