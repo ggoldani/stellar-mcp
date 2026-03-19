@@ -315,7 +315,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
       anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
       method: z.enum(["GET", "PUT"]).describe("HTTP method to use"),
       token: z.string().describe("SEP-10 JWT authentication token"),
-      kycFields: z.record(z.any()).optional().describe("Key-value pairs of KYC fields to PUT (e.g. first_name, last_name, email)")
+      kycFields: z.record(z.string(), z.any()).optional().describe("Key-value pairs of KYC fields to PUT (e.g. first_name, last_name, email)")
     },
     async ({ anchorDomain, method, token, kycFields }) => {
       try {
