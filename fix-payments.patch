@@ -1,0 +1,246 @@
+--- src/tools/payments.ts
++++ src/tools/payments.ts
+@@ -1,6 +1,7 @@
+ import {
+   Asset,
+   Claimant,
++  FeeBumpTransaction,
+   Keypair,
+   Memo,
+   Operation,
+@@ -276,6 +277,233 @@
+           "submit_fee_bump_transaction"
+         );
+
++        return {
++          content: [
++            {
++              type: "text",
++              text: JSON.stringify({
++                status: "success",
++                hash: submission.hash,
++                ledger: submission.ledger,
++                _debug: sanitizeDebugPayload({
++                  networkPassphrase: stellar.networkPassphrase
++                })
++              }, null, 2)
++            }
++          ]
++        };
++      } catch (error) {
++        const mapped = normalizeStellarError(error);
++        return {
++          isError: true,
++          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
++        };
++      }
++    }
++  );
++
++  server.tool(
++    "stellar_deposit_liquidity",
++    "Deposit liquidity into a classic Stellar AMM liquidity pool.",
++    {
++      sourceAccount: publicKeySchema.describe("Account providing liquidity"),
++      assetA: assetInputSchema.describe("First asset of the liquidity pool"),
++      assetB: assetInputSchema.describe("Second asset of the liquidity pool"),
++      maxAmountA: z.string().describe("Maximum amount of asset A to deposit"),
++      maxAmountB: z.string().describe("Maximum amount of asset B to deposit"),
++      minPrice: z.string().describe("Minimum price of asset A in terms of asset B"),
++      maxPrice: z.string().describe("Maximum price of asset A in terms of asset B"),
++      fee: z.number().int().default(30).describe("Liquidity pool fee in basis points (usually 30)")
++    },
++    async ({
++      sourceAccount,
++      assetA,
++      assetB,
++      maxAmountA,
++      maxAmountB,
++      minPrice,
++      maxPrice,
++      fee
++    }) => {
++      try {
++        const stellar = createStellarClients(config);
++        const account = await stellar.runHorizon(
++          stellar.horizon.loadAccount(sourceAccount),
++          "load_source_account"
++        );
++
++        const builder = new TransactionBuilder(account, {
++          fee: "100",
++          networkPassphrase: stellar.networkPassphrase
++        });
++
++        const assetObjA = new Asset(
++          assetA.type === "native" ? "XLM" : assetA.code,
++          assetA.type === "native" ? undefined : assetA.issuer
++        );
++
++        const assetObjB = new Asset(
++          assetB.type === "native" ? "XLM" : assetB.code,
++          assetB.type === "native" ? undefined : assetB.issuer
++        );
++
++        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
++        const liquidityPoolId = getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
++
++        builder.addOperation(
++          Operation.depositLiquidity({
++            liquidityPoolId,
++            maxAmountA,
++            maxAmountB,
++            minPrice,
++            maxPrice
++          })
++        );
++        builder.setTimeout(30);
++
++        const tx = builder.build();
++
++        const isUnsignedMode =
++          config.autoSignPolicy === "safe" ||
++          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
++          (!config.autoSignPolicy && !config.autoSign);
++
++        if (!isUnsignedMode && config.secretKey) {
++          tx.sign(Keypair.fromSecret(config.secretKey));
++        }
++
++        if (isUnsignedMode || !config.secretKey) {
++          return {
++            content: [
++              {
++                type: "text",
++                text: JSON.stringify({
++                  status: "unsigned",
++                  message:
++                    "Transaction requires signatures.",
++                  unsignedXdr: tx.toXDR()
++                }, null, 2)
++              }
++            ]
++          };
++        }
++
++        const submission = await stellar.runHorizon(
++          stellar.horizon.submitTransaction(tx),
++          "submit_deposit_liquidity"
++        );
++
++        return {
++          content: [
++            {
++              type: "text",
++              text: JSON.stringify({
++                status: "success",
++                hash: submission.hash,
++                ledger: submission.ledger,
++                _debug: sanitizeDebugPayload({
++                  networkPassphrase: stellar.networkPassphrase
++                })
++              }, null, 2)
++            }
++          ]
++        };
++      } catch (error) {
++        const mapped = normalizeStellarError(error);
++        return {
++          isError: true,
++          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
++        };
++      }
++    }
++  );
++
++  server.tool(
++    "stellar_withdraw_liquidity",
++    "Withdraw liquidity from a classic Stellar AMM liquidity pool.",
++    {
++      sourceAccount: publicKeySchema.describe("Account withdrawing liquidity"),
++      assetA: assetInputSchema.describe("First asset of the liquidity pool"),
++      assetB: assetInputSchema.describe("Second asset of the liquidity pool"),
++      amount: z.string().describe("Amount of pool shares to withdraw"),
++      minAmountA: z.string().describe("Minimum amount of asset A to receive"),
++      minAmountB: z.string().describe("Minimum amount of asset B to receive"),
++      fee: z.number().int().default(30).describe("Liquidity pool fee in basis points (usually 30)")
++    },
++    async ({
++      sourceAccount,
++      assetA,
++      assetB,
++      amount,
++      minAmountA,
++      minAmountB,
++      fee
++    }) => {
++      try {
++        const stellar = createStellarClients(config);
++        const account = await stellar.runHorizon(
++          stellar.horizon.loadAccount(sourceAccount),
++          "load_source_account"
++        );
++
++        const builder = new TransactionBuilder(account, {
++          fee: "100",
++          networkPassphrase: stellar.networkPassphrase
++        });
++
++        const assetObjA = new Asset(
++          assetA.type === "native" ? "XLM" : assetA.code,
++          assetA.type === "native" ? undefined : assetA.issuer
++        );
++
++        const assetObjB = new Asset(
++          assetB.type === "native" ? "XLM" : assetB.code,
++          assetB.type === "native" ? undefined : assetB.issuer
++        );
++
++        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
++        const liquidityPoolId = getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
++
++        builder.addOperation(
++          Operation.withdrawLiquidity({
++            liquidityPoolId,
++            amount,
++            minAmountA,
++            minAmountB
++          })
++        );
++        builder.setTimeout(30);
++
++        const tx = builder.build();
++
++        const isUnsignedMode =
++          config.autoSignPolicy === "safe" ||
++          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
++          (!config.autoSignPolicy && !config.autoSign);
++
++        if (!isUnsignedMode && config.secretKey) {
++          tx.sign(Keypair.fromSecret(config.secretKey));
++        }
++
++        if (isUnsignedMode || !config.secretKey) {
++          return {
++            content: [
++              {
++                type: "text",
++                text: JSON.stringify({
++                  status: "unsigned",
++                  message:
++                    "Transaction requires signatures.",
++                  unsignedXdr: tx.toXDR()
++                }, null, 2)
++              }
++            ]
++          };
++        }
++
++        const submission = await stellar.runHorizon(
++          stellar.horizon.submitTransaction(tx),
++          "submit_withdraw_liquidity"
++        );
++
+         return {
+           content: [
+             {
