@@ -401,6 +401,88 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
   );
 
   server.tool(
+    "stellar_sep31_remittance",
+    "Initiate a SEP-31 cross-border remittance payment.",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
+      token: z.string().describe("SEP-10 JWT authentication token"),
+      amount: z.string().describe("Amount to remit"),
+      assetCode: z.string().describe("Stellar asset code to send"),
+      destinationAsset: z.string().describe("Asset code the recipient will receive (e.g. NGN)"),
+      senderId: z.string().describe("Sender's KYC ID (from SEP-12)"),
+      receiverId: z.string().describe("Receiver's KYC ID (from SEP-12)"),
+      fields: z.record(z.string(), z.any()).optional().describe("Additional SEP-31 fields (e.g. routing details)")
+    },
+    async ({ anchorDomain, token, amount, assetCode, destinationAsset, senderId, receiverId, fields }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const directPaymentServer = parseTomlValue(toml, "DIRECT_PAYMENT_SERVER");
+        if (!directPaymentServer) {
+          throw new Error(
+            `SEP-31 discovery failed: DIRECT_PAYMENT_SERVER not found in stellar.toml of ${normalizedDomain}.`
+          );
+        }
+
+        const endpointUrl = new URL(
+          `${directPaymentServer.replace(/\/$/, "")}/transactions`
+        );
+
+        const payload = {
+          amount,
+          asset_code: assetCode,
+          destination_asset: destinationAsset,
+          sender_id: senderId,
+          receiver_id: receiverId,
+          fields: fields || {}
+        };
+
+        const responseJson = await fetchJsonWithTimeout<any>(
+          endpointUrl.toString(),
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(payload)
+          },
+          config.requestTimeoutMs
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                data: responseJson,
+                _debug: sanitizeDebugPayload({
+                  directPaymentServer
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
     "stellar_sep24_interactive",
     "Initiate a SEP-24 interactive deposit or withdrawal. Returns the interactive URL to present to the user.",
     {

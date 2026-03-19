@@ -4,12 +4,14 @@ import {
   Contract,
   Keypair,
   Networks,
+  Operation,
   TransactionBuilder,
   rpc,
   xdr,
   nativeToScVal
 } from "@stellar/stellar-sdk";
 import { z } from "zod";
+import * as fs from "node:fs";
 
 import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
@@ -226,6 +228,173 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
                 _debug: sanitizeDebugPayload({
                   contractId,
                   method,
+                  networkPassphrase: stellar.networkPassphrase
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_soroban_get_events",
+    "Fetch historical events emitted by a Soroban smart contract.",
+    {
+      startLedger: z.number().int().describe("The ledger sequence number to start fetching events from"),
+      contractIds: z.array(z.string()).optional().describe("Array of contract IDs (C...) to filter by"),
+      topics: z.array(z.string()).optional().describe("Array of topic strings (e.g. 'transfer', '*') to filter by"),
+      limit: z.number().int().min(1).max(100).default(100).describe("Maximum number of events to return")
+    },
+    async ({ startLedger, contractIds, topics, limit }) => {
+      try {
+        const stellar = createStellarClients(config);
+
+        const filters: any[] = [];
+        if (contractIds && contractIds.length > 0) {
+          filters.push({
+            type: "contract",
+            contractIds: contractIds,
+            topics: topics ? topics.map(t => t === "*" ? "*" : xdr.ScVal.scvSymbol(t).toXDR("base64")) : []
+          });
+        }
+
+        const eventsResponse = await stellar.runRpc(
+          stellar.rpc.getEvents({
+            startLedger,
+            filters,
+            limit
+          }),
+          "get_events"
+        );
+
+        const parsedEvents = eventsResponse.events.map(ev => ({
+          ledger: ev.ledger,
+          ledgerClosedAt: ev.ledgerClosedAt,
+          contractId: ev.contractId,
+          id: ev.id,
+          pagingToken: ev.pagingToken,
+          topics: ev.topic.map(t => t.toXDR("base64")),
+          valueXdr: ev.value.toXDR("base64"),
+          inSuccessfulContractCall: ev.inSuccessfulContractCall
+        }));
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                events: parsedEvents,
+                latestLedger: eventsResponse.latestLedger,
+                _debug: sanitizeDebugPayload({
+                  startLedger,
+                  filtersCount: filters.length
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_soroban_deploy",
+    "Upload and deploy a Soroban smart contract from a local .wasm file. Submits to the network if policy allows.",
+    {
+      wasmFilePath: z.string().describe("Absolute or relative path to the compiled .wasm file"),
+      sourceAccount: z.string().describe("Source account public key (G...) to deploy from")
+    },
+    async ({ wasmFilePath, sourceAccount }) => {
+      try {
+        if (!fs.existsSync(wasmFilePath)) {
+          throw new Error(`WASM file not found at path: ${wasmFilePath}`);
+        }
+
+        const wasmBuffer = fs.readFileSync(wasmFilePath);
+
+        const stellar = createStellarClients(config);
+
+        const account = await stellar.runHorizon(
+          stellar.horizon.loadAccount(sourceAccount),
+          "load_source_account"
+        );
+
+        const builder = new TransactionBuilder(account, {
+          fee: "100",
+          networkPassphrase: stellar.networkPassphrase
+        });
+
+        builder.addOperation(Operation.uploadContractWasm({ wasm: wasmBuffer }));
+        builder.setTimeout(30);
+
+        const tx = builder.build();
+
+        const simulation = await stellar.runRpc(
+          stellar.rpc.simulateTransaction(tx),
+          "simulate_upload"
+        );
+
+        if (rpc.Api.isSimulationError(simulation)) {
+          throw new Error(`Simulation failed: ${simulation.error}`);
+        }
+
+        const preparedTxBuilder = rpc.assembleTransaction(tx, simulation);
+        const preparedTx = preparedTxBuilder.build();
+
+        const isUnsignedMode =
+          config.autoSignPolicy === "safe" ||
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
+          (!config.autoSignPolicy && !config.autoSign);
+
+        if (!isUnsignedMode && config.secretKey) {
+          preparedTx.sign(Keypair.fromSecret(config.secretKey));
+        }
+
+        if (isUnsignedMode || !config.secretKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message:
+                    "Transaction requires signatures. Please sign this assembled XDR.",
+                  unsignedXdr: preparedTx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        const submission = await stellar.runRpc(
+          stellar.rpc.sendTransaction(preparedTx),
+          "submit_soroban_upload"
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: submission.status,
+                hash: submission.hash,
+                errorResultXdr: submission.errorResult?.toXDR("base64") || null,
+                _debug: sanitizeDebugPayload({
+                  wasmFilePath,
                   networkPassphrase: stellar.networkPassphrase
                 })
               }, null, 2)
