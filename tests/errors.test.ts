@@ -44,6 +44,18 @@ test("mapStellarResultCodes maps transaction-only failures", () => {
   assert.match(mapped.message, /transaction expired/i);
 });
 
+test("mapStellarResultCodes maps missing source account transaction code", () => {
+  const mapped = mapStellarResultCodes("tx_no_source_account");
+  assert.ok(mapped instanceof StellarProtocolError);
+  assert.match(mapped.message, /source account does not exist/i);
+});
+
+test("mapStellarResultCodes maps malformed operation code", () => {
+  const mapped = mapStellarResultCodes("tx_failed", "op_malformed");
+  assert.ok(mapped instanceof StellarProtocolError);
+  assert.match(mapped.message, /invalid operation structure/i);
+});
+
 test("mapUnknownError wraps non-error throwables", () => {
   const mapped = mapUnknownError("boom");
   assert.equal(mapped.message, "Unexpected non-error exception thrown.");

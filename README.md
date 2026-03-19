@@ -125,6 +125,12 @@ Local foundation smoke:
 npm run smoke:phase1
 ```
 
+Autonomy policy smoke without real keys/network writes:
+
+```bash
+npm run smoke:autonomy:mock
+```
+
 Live Tier-1 smoke on testnet (performs real tx):
 
 ```bash

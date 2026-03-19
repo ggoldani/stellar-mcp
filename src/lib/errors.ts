@@ -15,6 +15,7 @@ export class StellarProtocolError extends Error {
 const TX_CODE_MESSAGES: Record<string, string> = {
   tx_bad_auth: "Transaction failed: tx_bad_auth — invalid signatures. Rebuild and sign with required account signers.",
   tx_bad_seq: "Transaction failed: tx_bad_seq — sequence number is stale. Reload the source account and rebuild the transaction.",
+  tx_no_source_account: "Transaction failed: tx_no_source_account — source account does not exist on this network. Create/fund the account first.",
   tx_failed: "Transaction failed: tx_failed — one or more operations were rejected. Inspect operation result codes for actionable remediation.",
   tx_insufficient_fee: "Transaction failed: tx_insufficient_fee — offered fee is too low. Retry using stellar_get_fee_stats recommendation.",
   tx_internal_error: "Transaction failed: tx_internal_error — temporary Stellar internal issue. Retry the request.",
@@ -25,6 +26,7 @@ const TX_CODE_MESSAGES: Record<string, string> = {
 };
 
 const OP_CODE_MESSAGES: Record<string, string> = {
+  op_malformed: "Operation failed: op_malformed — invalid operation structure/parameters. Validate fields and rebuild transaction.",
   op_bad_auth: "Operation failed: op_bad_auth — source account authorization failed. Verify signer/threshold configuration.",
   op_no_source_account: "Operation failed: op_no_source_account — source account does not exist on this network.",
   op_not_supported: "Operation failed: op_not_supported — operation not supported on current network/protocol version.",
