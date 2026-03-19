@@ -35,7 +35,11 @@ export function validateMcpPostRequest(
   maxPayloadBytes: number
 ): PostValidationResult {
   const transferEncoding = req.headers["transfer-encoding"];
-  if (typeof transferEncoding === "string" && transferEncoding.trim().length > 0) {
+  const hasTransferEncoding =
+    (typeof transferEncoding === "string" && transferEncoding.trim().length > 0) ||
+    (Array.isArray(transferEncoding) &&
+      transferEncoding.some((value) => value.trim().length > 0));
+  if (hasTransferEncoding) {
     return {
       ok: false,
       status: 400,

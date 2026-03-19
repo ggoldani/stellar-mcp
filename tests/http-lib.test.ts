@@ -19,3 +19,8 @@ test("sanitizeUrlForLogs returns original input when URL parsing fails", () => {
   const raw = "not-a-valid-url";
   assert.equal(sanitizeUrlForLogs(raw), raw);
 });
+
+test("sanitizeUrlForLogs strips query/hash even for non-url fallback strings", () => {
+  const raw = "anchor/price?sell_asset=native#frag";
+  assert.equal(sanitizeUrlForLogs(raw), "anchor/price");
+});
