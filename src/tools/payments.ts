@@ -70,6 +70,16 @@ export function toStellarMemo(
   }
 }
 
+export function buildAnchorMemoAdvisory(
+  asset: z.infer<typeof assetInputSchema>,
+  memo: z.infer<typeof memoSchema> | undefined
+): string | undefined {
+  if (asset.type === "credit" && !memo) {
+    return "Advisory: many anchor flows require memo_type+memo for credit-asset transfers. Confirm anchor instructions before submission.";
+  }
+  return undefined;
+}
+
 /**
  * Register payment-focused MCP tools.
  *
@@ -96,6 +106,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         const validatedAmount = amountSchema.parse(amount);
         const validatedAsset = assetInputSchema.parse(asset);
         const validatedMemo = memo ? memoSchema.parse(memo) : undefined;
+        const anchorMemoAdvisory = buildAnchorMemoAdvisory(validatedAsset, validatedMemo);
 
         const stellar = createStellarClients(config);
         const sourceAccount = await stellar.runHorizon(
@@ -147,6 +158,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
                     "Network is testnet. Returned XDR is non-production and testnet state can reset periodically."
                 }
               : {}),
+            ...(anchorMemoAdvisory ? { advisory: anchorMemoAdvisory } : {}),
             _debug: sanitizeDebugPayload({
               selectedFee: feeStats.fee_charged.p99,
               valuationUsdc: estimatedValueUsdc ?? null
@@ -187,6 +199,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
                   "Network is testnet. Submitted transaction is non-production and testnet state can reset periodically."
               }
             : {}),
+          ...(anchorMemoAdvisory ? { advisory: anchorMemoAdvisory } : {}),
           _debug: sanitizeDebugPayload({
             transactionXdr: transaction.toXDR(),
             selectedFee: feeStats.fee_charged.p99,

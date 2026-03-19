@@ -56,6 +56,28 @@ export function assertTrustedAnchor(domain: string, trustedAnchorDomains: string
   }
 }
 
+function isSameOrSubdomain(hostname: string, rootDomain: string): boolean {
+  const host = hostname.toLowerCase();
+  const root = rootDomain.toLowerCase();
+  return host === root || host.endsWith(`.${root}`);
+}
+
+export function validateDiscoveredWebAuthEndpoint(
+  endpoint: string,
+  anchorDomain: string
+): string {
+  const parsed = new URL(endpoint);
+  if (parsed.protocol !== "https:") {
+    throw new Error("SEP-10 discovery failed: WEB_AUTH_ENDPOINT must use https.");
+  }
+  if (!isSameOrSubdomain(parsed.hostname, anchorDomain)) {
+    throw new Error(
+      "SEP-10 discovery failed: WEB_AUTH_ENDPOINT must be on anchor domain or its subdomain."
+    );
+  }
+  return parsed.toString();
+}
+
 /**
  * Register SEP-focused tools.
  *
@@ -103,9 +125,13 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             "SEP-10 discovery failed: WEB_AUTH_ENDPOINT not found in anchor stellar.toml."
           );
         }
+        const safeWebAuthEndpoint = validateDiscoveredWebAuthEndpoint(
+          webAuthEndpoint,
+          normalizedDomain
+        );
 
         const challenge = await fetchJsonWithTimeout<Sep10ChallengeResponse>(
-          `${webAuthEndpoint}?account=${encodeURIComponent(validatedPublicKey)}`,
+          `${safeWebAuthEndpoint}?account=${encodeURIComponent(validatedPublicKey)}`,
           { method: "GET", headers: { accept: "application/json" } },
           config.requestTimeoutMs
         );
@@ -117,7 +143,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
         challengeTx.sign(signer);
 
         const tokenResponse = await fetchJsonWithTimeout<Sep10TokenResponse>(
-          webAuthEndpoint,
+          safeWebAuthEndpoint,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -136,7 +162,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             : {}),
           _debug: sanitizeDebugPayload({
             anchorDomain: normalizedDomain,
-            webAuthEndpoint
+            webAuthEndpoint: safeWebAuthEndpoint
           })
         };
 
