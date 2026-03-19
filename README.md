@@ -170,15 +170,6 @@ npm run typecheck
 npm run build
 ```
 
-## npm Publish
-
-Recommended release flow:
-
-```bash
-npm version patch
-npm publish --access public
-```
-
 ## Inspired by stellarskills
 
 Knowledge layer powered by [stellarskills](https://github.com/ggoldani/stellarskills), execution layer powered by StellarMCP.
