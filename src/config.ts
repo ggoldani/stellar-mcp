@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Networks } from "@stellar/stellar-sdk";
 
-import type { RuntimeTransport, StellarNetwork } from "./types.js";
+import type { AutoSignPolicy, RuntimeTransport, StellarNetwork } from "./types.js";
 
 const EnvSchema = z.object({
   MCP_TRANSPORT: z.enum(["stdio", "http-sse"]).optional(),
@@ -12,6 +12,7 @@ const EnvSchema = z.object({
   STELLAR_ALLOWED_HOSTS: z.string().optional(),
   STELLAR_TRUSTED_ANCHOR_DOMAINS: z.string().optional(),
   STELLAR_SECRET_KEY: z.string().optional(),
+  STELLAR_AUTO_SIGN_POLICY: z.enum(["safe", "guarded", "expert"]).optional(),
   STELLAR_AUTO_SIGN: z.coerce.boolean().default(false),
   STELLAR_AUTO_SIGN_LIMIT: z.coerce.number().min(0).default(0),
   STELLAR_USDC_ISSUER: z
@@ -37,6 +38,7 @@ export interface AppConfig {
   rpcUrl?: string;
   sep38Url?: string;
   secretKey?: string;
+  autoSignPolicy: AutoSignPolicy;
   autoSign: boolean;
   autoSignLimit: number;
   usdcIssuer: string;
@@ -92,6 +94,51 @@ function parseAllowedHosts(raw?: string): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function deriveAutoSignRuntime(input: {
+  policyRaw?: "safe" | "guarded" | "expert";
+  autoSignRaw: boolean;
+  autoSignLimitRaw: number;
+}): {
+  autoSignPolicy: AutoSignPolicy;
+  autoSign: boolean;
+  autoSignLimit: number;
+} {
+  if (!input.policyRaw) {
+    return {
+      autoSignPolicy: "legacy",
+      autoSign: input.autoSignRaw,
+      autoSignLimit: input.autoSignLimitRaw
+    };
+  }
+
+  if (input.policyRaw === "safe") {
+    return {
+      autoSignPolicy: "safe",
+      autoSign: false,
+      autoSignLimit: 0
+    };
+  }
+
+  if (input.policyRaw === "guarded") {
+    if (input.autoSignLimitRaw <= 0) {
+      throw new Error(
+        "STELLAR_AUTO_SIGN_POLICY=guarded requires STELLAR_AUTO_SIGN_LIMIT > 0."
+      );
+    }
+    return {
+      autoSignPolicy: "guarded",
+      autoSign: true,
+      autoSignLimit: input.autoSignLimitRaw
+    };
+  }
+
+  return {
+    autoSignPolicy: "expert",
+    autoSign: true,
+    autoSignLimit: 0
+  };
+}
+
 function validateEndpointOverride(
   endpointName: "STELLAR_HORIZON_URL" | "STELLAR_RPC_URL" | "STELLAR_SEP38_URL",
   value: string | undefined,
@@ -145,6 +192,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     parsed.STELLAR_SEP38_URL,
     allowedHosts
   );
+  const autoSignRuntime = deriveAutoSignRuntime({
+    policyRaw: parsed.STELLAR_AUTO_SIGN_POLICY,
+    autoSignRaw: parsed.STELLAR_AUTO_SIGN,
+    autoSignLimitRaw: parsed.STELLAR_AUTO_SIGN_LIMIT
+  });
 
   return {
     transport: parsed.MCP_TRANSPORT ?? "stdio",
@@ -153,8 +205,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rpcUrl,
     sep38Url,
     secretKey: parsed.STELLAR_SECRET_KEY,
-    autoSign: parsed.STELLAR_AUTO_SIGN,
-    autoSignLimit: parsed.STELLAR_AUTO_SIGN_LIMIT,
+    autoSignPolicy: autoSignRuntime.autoSignPolicy,
+    autoSign: autoSignRuntime.autoSign,
+    autoSignLimit: autoSignRuntime.autoSignLimit,
     usdcIssuer: parsed.STELLAR_USDC_ISSUER,
     port: parsed.PORT,
     networkPassphrase: NETWORK_PASSPHRASE[parsed.STELLAR_NETWORK],

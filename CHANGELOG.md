@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.3 - 2026-03-18
+
+- Add 3-level auto-sign policy runtime:
+  - `safe` (default recommended): always unsigned XDR.
+  - `guarded`: requires `STELLAR_AUTO_SIGN_LIMIT > 0` with fail-closed valuation behavior.
+  - `expert`: unlimited auto-sign and submit.
+- Preserve backward compatibility when policy is unset by honoring legacy envs:
+  - `STELLAR_AUTO_SIGN`
+  - `STELLAR_AUTO_SIGN_LIMIT`
+- Add config test coverage for all policy modes and guarded validation.
+
 ## 0.1.2 - 2026-03-18
 
 - Harden SEP-10 flow:
