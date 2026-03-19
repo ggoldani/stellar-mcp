@@ -116,7 +116,7 @@ export function validateSep10ChallengePayload(
   }
   if (payload.network_passphrase !== expectedNetworkPassphrase) {
     throw new Error(
-      "SEP-10 challenge response has unexpected network passphrase for current Stellar network."
+      `SEP-10 challenge response has unexpected network passphrase. Expected "${expectedNetworkPassphrase}", got "${payload.network_passphrase}".`
     );
   }
   return {

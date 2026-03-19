@@ -13,7 +13,7 @@ export class StellarProtocolError extends Error {
 }
 
 const TX_CODE_MESSAGES: Record<string, string> = {
-  tx_bad_auth: "Transaction failed: tx_bad_auth — invalid signatures. Rebuild and sign with required account signers.",
+  tx_bad_auth: "Transaction failed: tx_bad_auth — invalid signatures. Rebuild and sign with required account signers, and verify network passphrase matches STELLAR_NETWORK.",
   tx_bad_seq: "Transaction failed: tx_bad_seq — sequence number is stale. Reload the source account and rebuild the transaction.",
   tx_no_source_account: "Transaction failed: tx_no_source_account — source account does not exist on this network. Create/fund the account first.",
   tx_failed: "Transaction failed: tx_failed — one or more operations were rejected. Inspect operation result codes for actionable remediation.",

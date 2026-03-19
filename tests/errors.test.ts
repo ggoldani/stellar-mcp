@@ -56,6 +56,12 @@ test("mapStellarResultCodes maps malformed operation code", () => {
   assert.match(mapped.message, /invalid operation structure/i);
 });
 
+test("mapStellarResultCodes tx_bad_auth includes network mismatch guidance", () => {
+  const mapped = mapStellarResultCodes("tx_bad_auth");
+  assert.ok(mapped instanceof StellarProtocolError);
+  assert.match(mapped.message, /network passphrase/i);
+});
+
 test("mapUnknownError wraps non-error throwables", () => {
   const mapped = mapUnknownError("boom");
   assert.equal(mapped.message, "Unexpected non-error exception thrown.");

@@ -131,7 +131,7 @@ test("validateSep10ChallengePayload rejects network mismatch", () => {
         },
         "Test SDF Network ; September 2015"
       ),
-    /network passphrase/i
+    /expected .*test sdf network/i
   );
 });
 
