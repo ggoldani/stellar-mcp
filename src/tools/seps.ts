@@ -238,6 +238,381 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
   );
 
   server.tool(
+    "stellar_sep6_transfer",
+    "Initiate a SEP-6 programmatic deposit or withdrawal.",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
+      type: z.enum(["deposit", "withdraw"]).describe("Transaction type: deposit or withdraw"),
+      assetCode: z.string().describe("Stellar asset code, e.g. USDC"),
+      token: z.string().describe("SEP-10 JWT authentication token"),
+      amount: z.string().optional().describe("Amount to transfer"),
+      typeField: z.string().optional().describe("Type of deposit or withdrawal (e.g. bank_account, SEPA)"),
+      destOrAccount: z.string().optional().describe("Destination account or bank details routing")
+    },
+    async ({ anchorDomain, type, assetCode, token, amount, typeField, destOrAccount }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const transferServer = parseTomlValue(toml, "TRANSFER_SERVER");
+        if (!transferServer) {
+          throw new Error(
+            `SEP-6 discovery failed: TRANSFER_SERVER not found in stellar.toml of ${normalizedDomain}.`
+          );
+        }
+
+        const endpointUrl = new URL(
+          `${transferServer.replace(/\/$/, "")}/${type}`
+        );
+
+        const formData = new URLSearchParams();
+        formData.append("asset_code", assetCode);
+        if (amount) formData.append("amount", amount);
+        if (typeField) formData.append("type", typeField);
+        if (destOrAccount) {
+          if (type === "deposit") formData.append("account", destOrAccount);
+          if (type === "withdraw") formData.append("dest", destOrAccount);
+        }
+
+        const authHeader = `Bearer ${token}`;
+        const responseUrl = endpointUrl.toString() + "?" + formData.toString();
+
+        const responseJson = await fetchJsonWithTimeout<any>(
+          responseUrl,
+          {
+            method: "GET",
+            headers: {
+              "Authorization": authHeader,
+              "Accept": "application/json"
+            }
+          },
+          config.requestTimeoutMs
+        );
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(responseJson, null, 2) }]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_sep12_customer",
+    "GET or PUT customer KYC data to an Anchor's SEP-12 KYC_SERVER.",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
+      method: z.enum(["GET", "PUT"]).describe("HTTP method to use"),
+      token: z.string().describe("SEP-10 JWT authentication token"),
+      kycFields: z.record(z.string(), z.any()).optional().describe("Key-value pairs of KYC fields to PUT (e.g. first_name, last_name, email)")
+    },
+    async ({ anchorDomain, method, token, kycFields }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const kycServer = parseTomlValue(toml, "KYC_SERVER");
+        if (!kycServer) {
+          throw new Error(
+            `SEP-12 discovery failed: KYC_SERVER not found in stellar.toml of ${normalizedDomain}.`
+          );
+        }
+
+        const endpointUrl = new URL(
+          `${kycServer.replace(/\/$/, "")}/customer`
+        ).toString();
+
+        let responseJson: any;
+
+        if (method === "GET") {
+          responseJson = await fetchJsonWithTimeout(
+            endpointUrl.toString(),
+            {
+              method: "GET",
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Accept": "application/json"
+              }
+            },
+            config.requestTimeoutMs
+          );
+        } else if (method === "PUT") {
+          const formData = new URLSearchParams();
+          if (kycFields) {
+            for (const [k, v] of Object.entries(kycFields)) {
+              formData.append(k, String(v));
+            }
+          }
+
+          responseJson = await fetchJsonWithTimeout(
+            endpointUrl.toString(),
+            {
+              method: "PUT",
+              headers: {
+                "Authorization": `Bearer ${token}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept": "application/json"
+              },
+              body: formData.toString()
+            },
+            config.requestTimeoutMs
+          );
+        }
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                data: responseJson,
+                _debug: sanitizeDebugPayload({
+                  kycServer: kycServer ?? ""
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_sep31_remittance",
+    "Initiate a SEP-31 cross-border remittance payment.",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
+      token: z.string().describe("SEP-10 JWT authentication token"),
+      amount: z.string().describe("Amount to remit"),
+      assetCode: z.string().describe("Stellar asset code to send"),
+      destinationAsset: z.string().describe("Asset code the recipient will receive (e.g. NGN)"),
+      senderId: z.string().describe("Sender's KYC ID (from SEP-12)"),
+      receiverId: z.string().describe("Receiver's KYC ID (from SEP-12)"),
+      fields: z.record(z.string(), z.any()).optional().describe("Additional SEP-31 fields (e.g. routing details)")
+    },
+    async ({ anchorDomain, token, amount, assetCode, destinationAsset, senderId, receiverId, fields }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const directPaymentServer = parseTomlValue(toml, "DIRECT_PAYMENT_SERVER");
+        if (!directPaymentServer) {
+          throw new Error(
+            `SEP-31 discovery failed: DIRECT_PAYMENT_SERVER not found in stellar.toml of ${normalizedDomain}.`
+          );
+        }
+
+        const endpointUrl = new URL(
+          `${directPaymentServer.replace(/\/$/, "")}/transactions`
+        );
+
+        const payload = {
+          amount,
+          asset_code: assetCode,
+          destination_asset: destinationAsset,
+          sender_id: senderId,
+          receiver_id: receiverId,
+          fields: fields || {}
+        };
+
+        const responseJson = await fetchJsonWithTimeout<any>(
+          endpointUrl.toString(),
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            body: JSON.stringify(payload)
+          },
+          config.requestTimeoutMs
+        );
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "success",
+                data: responseJson,
+                _debug: sanitizeDebugPayload({
+                  directPaymentServer
+                })
+              }, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_sep24_interactive",
+    "Initiate a SEP-24 interactive deposit or withdrawal. Returns the interactive URL to present to the user.",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
+      type: z.enum(["deposit", "withdraw"]).describe("Transaction type: deposit or withdraw"),
+      assetCode: z.string().describe("Stellar asset code, e.g. USDC"),
+      token: z.string().describe("SEP-10 JWT authentication token")
+    },
+    async ({ anchorDomain, type, assetCode, token }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const transferServerSep24 = parseTomlValue(toml, "TRANSFER_SERVER_SEP0024");
+        if (!transferServerSep24) {
+          throw new Error(
+            `SEP-24 discovery failed: TRANSFER_SERVER_SEP0024 not found in stellar.toml of ${normalizedDomain}.`
+          );
+        }
+
+        const endpointUrl = new URL(
+          `${transferServerSep24.replace(/\/$/, "")}/transactions/${type}/interactive`
+        );
+
+        const formData = new URLSearchParams();
+        formData.append("asset_code", assetCode);
+
+        interface Sep24InteractiveResponse {
+          type: string;
+          url: string;
+          id: string;
+        }
+
+        const authHeader = `Bearer ${token}`;
+        const responseJson = await fetchJsonWithTimeout<Sep24InteractiveResponse>(
+          endpointUrl.toString(),
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              "Authorization": authHeader
+            },
+            body: formData.toString()
+          },
+          config.requestTimeoutMs
+        );
+
+        const response = {
+          type: responseJson.type,
+          url: responseJson.url,
+          id: responseJson.id,
+          instructions: "Open the returned URL in a browser to complete the interactive flow.",
+          _debug: sanitizeDebugPayload({
+            transferServerSep24
+          })
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(response, null, 2) }]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "stellar_get_anchor_toml",
+    "Fetch and parse the stellar.toml file for a given anchor domain to discover SEP support (SEP-10, SEP-24, etc).",
+    {
+      anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com")
+    },
+    async ({ anchorDomain }) => {
+      try {
+        const normalizedDomain = normalizeAnchorDomain(anchorDomain);
+        const tomlUrl = `https://${normalizedDomain}/.well-known/stellar.toml`;
+
+        const toml = await fetchTextWithTimeout(
+          tomlUrl,
+          { method: "GET" },
+          config.requestTimeoutMs
+        );
+
+        const webAuthEndpoint = parseTomlValue(toml, "WEB_AUTH_ENDPOINT");
+        const kycServer = parseTomlValue(toml, "KYC_SERVER");
+        const transferServer = parseTomlValue(toml, "TRANSFER_SERVER");
+        const transferServerSep24 = parseTomlValue(toml, "TRANSFER_SERVER_SEP0024");
+        const directPaymentServer = parseTomlValue(toml, "DIRECT_PAYMENT_SERVER");
+        const anchorQuoteServer = parseTomlValue(toml, "ANCHOR_QUOTE_SERVER");
+
+        const response = {
+          domain: normalizedDomain,
+          discoveredEndpoints: {
+            webAuthEndpoint: webAuthEndpoint ?? null,
+            kycServer: kycServer ?? null,
+            transferServer: transferServer ?? null, // SEP-6
+            transferServerSep24: transferServerSep24 ?? null, // SEP-24
+            directPaymentServer: directPaymentServer ?? null, // SEP-31
+            anchorQuoteServer: anchorQuoteServer ?? null // SEP-38
+          },
+          rawTomlPreview: toml.substring(0, 1000) + (toml.length > 1000 ? "... (truncated)" : ""),
+          _debug: sanitizeDebugPayload({
+            tomlUrl
+          })
+        };
+
+        return {
+          content: [{ type: "text", text: JSON.stringify(response, null, 2) }]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
+  server.tool(
     "stellar_get_sep38_quote",
     "Request a SEP-38 indicative quote and return rate metadata.",
     sep38InputSchema,

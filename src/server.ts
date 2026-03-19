@@ -6,6 +6,7 @@ import { registerAssetTools } from "./tools/assets.js";
 import { registerNetworkTools } from "./tools/network.js";
 import { registerPaymentTools } from "./tools/payments.js";
 import { registerSepTools } from "./tools/seps.js";
+import { registerSorobanTools } from "./tools/soroban.js";
 
 export function createServer(config: AppConfig): McpServer {
   const server = new McpServer({
@@ -18,6 +19,7 @@ export function createServer(config: AppConfig): McpServer {
   registerAssetTools(server, config);
   registerNetworkTools(server, config);
   registerSepTools(server, config);
+  registerSorobanTools(server, config);
 
   return server;
 }
