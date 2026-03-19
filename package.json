@@ -1,0 +1,41 @@
+{
+  "name": "stellarmcp",
+  "version": "0.1.0",
+  "description": "Stellar MCP server focused on execution-grade agent tooling.",
+  "license": "MIT",
+  "type": "module",
+  "main": "build/src/index.js",
+  "bin": {
+    "stellarmcp": "build/src/index.js"
+  },
+  "files": [
+    "build",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test build/tests/*.test.js",
+    "dev": "tsx src/index.ts",
+    "start:stdio": "node build/src/index.js",
+    "start:http": "MCP_TRANSPORT=http-sse node build/src/index.js",
+    "smoke:phase1": "node build/tests/smoke.js",
+    "smoke:autonomy:mock": "node build/tests/smoke-autonomy-mock.js",
+    "smoke:tier1:friendbot": "node build/tests/smoke-tier1-friendbot.js",
+    "smoke:tier1:testnet": "node build/tests/smoke-tier1-testnet.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@stellar/stellar-sdk": "^14.6.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
