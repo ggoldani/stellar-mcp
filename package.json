@@ -24,6 +24,7 @@
     "start:stdio": "node build/src/index.js",
     "start:http": "MCP_TRANSPORT=http-sse node build/src/index.js",
     "smoke:phase1": "node build/tests/smoke.js",
+    "smoke:autonomy:mock": "node build/tests/smoke-autonomy-mock.js",
     "smoke:tier1:testnet": "node build/tests/smoke-tier1-testnet.js"
   },
   "dependencies": {
