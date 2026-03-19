@@ -131,6 +131,12 @@ Autonomy policy smoke without real keys/network writes:
 npm run smoke:autonomy:mock
 ```
 
+Live Tier-1 smoke on testnet with ephemeral Friendbot-funded accounts (no personal env secrets):
+
+```bash
+npm run smoke:tier1:friendbot
+```
+
 Live Tier-1 smoke on testnet (performs real tx):
 
 ```bash
