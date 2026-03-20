@@ -210,6 +210,24 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
           })
         };
 
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(response, null, 2)
+            }
+          ]
+        };
+      } catch (error) {
+        const mapped = normalizeStellarError(error);
+        return {
+          isError: true,
+          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
+        };
+      }
+    }
+  );
+
   server.tool(
     "stellar_submit_fee_bump_transaction",
     "Sponsor the fees for an existing transaction using a Fee Bump Transaction. Submits to the network.",
@@ -240,7 +258,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         );
 
         const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
-          feeAccountObj,
+          feeAccountObj.accountId(),
           maxFee || "100",
           innerTx,
           stellar.networkPassphrase
@@ -273,87 +291,6 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
 
         const submission = await stellar.runHorizon(
           stellar.horizon.submitTransaction(feeBumpTx as any), // Horizon client handles both tx types
-          "submit_fee_bump_transaction"
-        );
-
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                status: "success",
-                hash: submission.hash,
-                ledger: submission.ledger,
-                _debug: sanitizeDebugPayload({
-                  networkPassphrase: stellar.networkPassphrase
-                })
-              }, null, 2)
-            }
-          ]
-        };
-      } catch (error) {
-        const mapped = normalizeStellarError(error);
-        return {
-          isError: true,
-          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
-        };
-      }
-    }
-  );
-
-  server.tool(
-    "stellar_submit_fee_bump_transaction",
-    "Sponsor the fees for an existing transaction using a Fee Bump Transaction. Submits to the network.",
-    {
-      innerTxXdr: z.string().describe("Base64 encoded inner transaction XDR (must be signed by the inner source account)"),
-      feeAccount: publicKeySchema.describe("Account that will pay the fees (sponsor)"),
-      maxFee: z.string().optional().describe("Maximum fee to pay (in stroops). Defaults to a reasonable minimum.")
-    },
-    async ({ innerTxXdr, feeAccount, maxFee }) => {
-      try {
-        const stellar = createStellarClients(config);
-
-        const innerTx = new Transaction(innerTxXdr, stellar.networkPassphrase);
-
-        const feeAccountObj = await stellar.runHorizon(
-          stellar.horizon.loadAccount(feeAccount),
-          "load_fee_account"
-        );
-
-        const feeBumpTx = TransactionBuilder.buildFeeBumpTransaction(
-          feeAccountObj,
-          maxFee || "100",
-          innerTx,
-          stellar.networkPassphrase
-        );
-
-        const isUnsignedMode =
-          config.autoSignPolicy === "safe" ||
-          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
-          (!config.autoSignPolicy && !config.autoSign);
-
-        if (!isUnsignedMode && config.secretKey) {
-          feeBumpTx.sign(Keypair.fromSecret(config.secretKey));
-        }
-
-        if (isUnsignedMode || !config.secretKey) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify({
-                  status: "unsigned",
-                  message:
-                    "Transaction requires sponsor signature.",
-                  unsignedXdr: feeBumpTx.toXDR()
-                }, null, 2)
-              }
-            ]
-          };
-        }
-
-        const submission = await stellar.runHorizon(
-          stellar.horizon.submitTransaction(feeBumpTx as any),
           "submit_fee_bump_transaction"
         );
 
@@ -430,7 +367,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
 
         builder.addOperation(
-          Operation.depositLiquidity({
+          (Operation as any).depositLiquidity({
             liquidityPoolId,
             maxAmountA,
             maxAmountB,
@@ -543,7 +480,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
         const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
 
         builder.addOperation(
-          Operation.withdrawLiquidity({
+          (Operation as any).withdrawLiquidity({
             liquidityPoolId,
             amount,
             minAmountA,
@@ -599,16 +536,6 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
             }
           ]
         };
-      } catch (error) {
-        const mapped = normalizeStellarError(error);
-        return {
-          isError: true,
-          content: [{ type: "text", text: redactSensitiveText(mapped.message) }]
-        };
-      }
-    }
-  );
-}
       } catch (error) {
         const mapped = normalizeStellarError(error);
         return {
