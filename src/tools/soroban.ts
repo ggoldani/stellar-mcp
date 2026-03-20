@@ -280,7 +280,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
           ledgerClosedAt: ev.ledgerClosedAt,
           contractId: ev.contractId,
           id: ev.id,
-          pagingToken: ev.pagingToken,
+          pagingToken: (ev as any).pagingToken,
           topics: ev.topic.map(t => t.toXDR("base64")),
           valueXdr: ev.value.toXDR("base64"),
           inSuccessfulContractCall: ev.inSuccessfulContractCall
