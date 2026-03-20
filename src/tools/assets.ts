@@ -7,7 +7,7 @@ import { decideSigningPolicy } from "../lib/autonomy.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
-import { amountSchema, publicKeySchema, secretKeySchema } from "../lib/validate.js";
+import { amountSchema, assetInputSchema, publicKeySchema, secretKeySchema } from "../lib/validate.js";
 
 const createTrustlineInputSchema = {
   account: z.string().describe("Account public key that will hold the trustline."),
@@ -219,7 +219,7 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
 
         builder.addOperation(
-          Operation.depositLiquidity({
+          (Operation as any).depositLiquidity({
             liquidityPoolId,
             maxAmountA,
             maxAmountB,
@@ -332,7 +332,7 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
 
         builder.addOperation(
-          Operation.withdrawLiquidity({
+          (Operation as any).withdrawLiquidity({
             liquidityPoolId,
             amount,
             minAmountA,
