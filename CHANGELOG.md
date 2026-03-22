@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.7 - 2026-03-22
+
+- Phase C pre-closure: `verify:phase:c` runs `pack:sanity` (`npm pack --dry-run --json` checks for templates, shipped `errors.ts`/`redact.ts`, and `build/src/generator/cli.js`) and **full** `generator:e2e` (baseline + exotic fixture outputs, nested `npm ci`/`npm install` + `typecheck`, configurable timeouts; quick local path via default `generator:e2e` or `GENERATOR_E2E_QUICK=1`).
+- Narrow `package.json` `files` to `build/src` so E2E artifacts under `build/` are never published; CI workflow runs `verify:phase:c` (30m timeout).
+- Add `tests/fixtures/contract-spec-exotic-fixture.json` (map-typed arg), generator tests for loose schemas + **byte-identical** `errors.ts`/`redact.ts` copy guard; document non-goals for `z.unknown()` / loose edges in README.
+
+## 0.1.6 - 2026-03-22
+
+- Phase C (Soroban MCP generator): add `stellarmcp-generate` / `src/generator/` CLI + programmatic `generateProject`, `templates/generated-mcp` baseline, fixture `tests/fixtures/contract-spec-fixture.json`, and `tests/generator.test.ts` conformance assertions.
+- Generated packages embed Zod env validation, signing policy hooks, copied `errors.ts`/`redact.ts`, per-method MCP tools, `typedClient.ts`, and `meta.ts` (`GENERATOR_ARTIFACT_VERSION`, `SPEC_FINGERPRINT`, compatibility note).
+- `npm run verify:phase:c` extends Phase B gate with `generator:e2e`; publish `files` include `templates` and `src/lib/errors.ts` + `src/lib/redact.ts` for generator consumers.
+
 ## 0.1.5 - 2026-03-22
 
 - Phase B (historical meta): add read-only `stellar_get_ledger_meta` and `stellar_get_transaction_meta` with Horizon-first upstream, Soroban RPC fallback, bounded base64 XDR fields (truncation metadata), freshness/cache metadata, and optional `operation_index` via `TransactionMeta` JSON decode.

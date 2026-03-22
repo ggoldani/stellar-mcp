@@ -13,7 +13,7 @@ import { registerXdrTools } from "./tools/xdr.js";
 export function createServer(config: AppConfig): McpServer {
   const server = new McpServer({
     name: "stellarmcp",
-    version: "0.1.0"
+    version: "0.1.7"
   });
 
   registerAccountTools(server, config);

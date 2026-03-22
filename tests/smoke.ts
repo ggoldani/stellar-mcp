@@ -112,7 +112,7 @@ async function runHttpSmoke(): Promise<void> {
     assert.equal(health.transport, "http-sse");
     assert.equal(typeof health.horizonReachable, "boolean");
     assert.equal(typeof health.rpcReachable, "boolean");
-    assert.equal(health.version, "0.1.0");
+    assert.equal(health.version, "0.1.7");
 
     const mcpResponse = await fetch(`http://127.0.0.1:${port}/mcp`);
     assert.notEqual(

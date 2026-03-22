@@ -34,6 +34,67 @@ npm install
 npm run build
 ```
 
+## Soroban MCP generator (Phase C)
+
+Production scope is **CLI-first**: you generate a **standalone** Node MCP package (stdio) from a deployed contract’s WASM custom section or from a checked-in spec JSON. The template copies StellarMCP’s `normalizeStellarError` + `redact`/`sanitizeDebug` behavior into the output so generated servers stay aligned with the main server’s security baseline.
+
+### Inputs
+
+1. **Contract WASM** (`.wasm`) — `Spec.fromWasm` reads the `contractspecv0` section (same as `@stellar/stellar-sdk/contract` `Spec`).
+2. **Spec JSON** — canonical manifest:
+
+```json
+{
+  "format": "stellarmcp-contract-spec-v1",
+  "version": 1,
+  "entries": ["<base64 ScSpecEntry>", "..."]
+}
+```
+
+Each `entries[]` element is one base64-encoded `ScSpecEntry` XDR value (as produced by the SDK from an on-disk WASM or your own tooling).
+
+### Outputs (generated layout)
+
+Under `--out <dir>`:
+
+- `package.json`, `tsconfig.json` — pinned to the same `@modelcontextprotocol/sdk`, `@stellar/stellar-sdk`, and `zod` versions as the generator release.
+- `src/index.ts` — stdio MCP entrypoint.
+- `src/config.ts` — Zod-validated env (`STELLAR_CONTRACT_ID`, `STELLAR_NETWORK`, RPC/Horizon URLs, signing policy mirrors main server semantics).
+- `src/registerContractTools.ts` — one MCP tool per contract function: `{alias}_{method}`.
+- `src/generated/schemas.ts` — per-method Zod input shapes (plus `contractId` override and `sourceAccount`).
+- `src/generated/specEntries.ts` — embedded spec entries.
+- `src/generated/meta.ts` — `GENERATOR_ARTIFACT_VERSION`, `STELLARMCP_GENERATOR_SEMVER`, `SPEC_FINGERPRINT`, compatibility note.
+- `src/generated/typedClient.ts` — typed argument helpers for non-MCP TypeScript callers.
+- `src/lib/*` — `contractInvoke.ts`, `stellarClient.ts`, `policy.ts`, and **copies** of `errors.ts` / `redact.ts` from this repo at generation time.
+
+### CLI
+
+After `npm run build` in this repository:
+
+```bash
+node build/src/generator/cli.js --input path/to/contract.wasm --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
+# or
+node build/src/generator/cli.js --input path/to/spec.json --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
+```
+
+Published installs expose the same entry as `stellarmcp-generate`.
+
+Then inside the output directory: `npm install && npm run build && STELLAR_CONTRACT_ID=C... STELLAR_NETWORK=testnet node build/src/index.js`.
+
+### Explicit non-goals (current cycle)
+
+- No generated HTTP/SSE transport (stdio only); add your own transport only if you accept the security review burden.
+- No multi-contract orchestration, workspace monorepos, or automatic publish to npm.
+- **Unknown or exotic spec shapes:** parameters that the generator does not model precisely are emitted as `z.unknown()`, `z.record(z.string(), z.unknown())`, or similar **loose** Zod at the edges. That passes MCP/schema plumbing but does **not** replace Soroban correctness: agents and operators must still supply arguments that `Spec.funcArgsToScVals` and RPC simulation accept (fix shapes when simulation fails).
+- Deep tuples, some UDTs, and other rare arms follow the same pattern: static types are best-effort; **simulation-time** validation remains authoritative.
+- Phase D CLI bridge remains **out of scope** (see master plan).
+
+### Versioning and compatibility
+
+- **`GENERATOR_ARTIFACT_VERSION`** bumps when the generator changes output shape or conventions.
+- **`SPEC_FINGERPRINT`** hashes sorted spec entries; use it to detect unchanged contracts across regenerations.
+- Regenerate after upgrading the parent `stellarmcp` package or changing the contract interface.
+
 ## Configuration
 
 Start from the provided example:
@@ -210,6 +271,24 @@ Transaction meta with optional per-operation slice (when `resultMetaXdr` is not 
 ```
 
 ## Testing & Verification
+
+Phase C gate (typecheck, full tests, Tier-1 smoke, autonomy mock, **`npm pack` sanity**, **generator full E2E**):
+
+```bash
+npm run verify:phase:c
+```
+
+`verify:phase:c` runs, in order: `verify:base` (includes `tests/generator.test.ts`, copy-drift checks, exotic fixture assertions), `smoke:phase1`, `smoke:autonomy:mock`, `pack:sanity` (dry-run tarball must include `templates/generated-mcp/**`, `src/lib/errors.ts`, `src/lib/redact.ts`, `build/src/generator/cli.js`), and `generator:e2e` with **`GENERATOR_E2E_FULL=1`**: regenerates `build/generator-phasec-fixture-out` and `build/generator-phasec-exotic-out`, runs `npm ci` when a lockfile exists else `npm install`, then `npm run typecheck` in each (timeouts default 180s / 120s; override with `GENERATOR_E2E_INSTALL_TIMEOUT_MS` / `GENERATOR_E2E_TYPECHECK_TIMEOUT_MS`).
+
+Faster local generator smoke (file presence only, **no** nested `npm install` / typecheck):
+
+```bash
+npm run generator:e2e
+```
+
+On **CI**, `CI=true` also forces the full generator path even if you only run `generator:e2e`. To force full locally: `GENERATOR_E2E_FULL=1 npm run generator:e2e`. Explicit quick mode: `GENERATOR_E2E_QUICK=1 npm run generator:e2e` (refuses to combine with `CI` or `GENERATOR_E2E_FULL`).
+
+Published npm tarballs list only `build/src` (not all of `build/`) so transient E2E directories under `build/` are never packed.
 
 Local foundation smoke test:
 
