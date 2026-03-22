@@ -2,3 +2,9 @@
 node_modules/
 build/
 *.tgz
+.env
+.env.*
+!.env.example
+docs/plans/
+docs/local/
+.venv*/
