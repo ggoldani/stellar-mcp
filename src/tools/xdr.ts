@@ -122,13 +122,16 @@ export function registerXdrTools(server: McpServer, config: AppConfig): void {
           ]
         };
       } catch (error) {
-        const mapped = normalizeStellarError(error);
+        const text =
+          typeof error === "string"
+            ? error
+            : normalizeStellarError(error).message;
         return {
           isError: true,
           content: [
             {
               type: "text",
-              text: redactSensitiveText(mapped.message)
+              text: redactSensitiveText(text)
             }
           ]
         };
