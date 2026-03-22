@@ -1,3 +1,7 @@
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { z } from "zod";
 import { Networks } from "@stellar/stellar-sdk";
 
@@ -23,7 +27,21 @@ const EnvSchema = z.object({
   MCP_HTTP_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
   MCP_HTTP_MAX_CONCURRENT: z.coerce.number().int().positive().default(20),
   MCP_HTTP_MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262_144),
-  MCP_HTTP_TRUST_PROXY: z.coerce.boolean().default(false)
+  MCP_HTTP_TRUST_PROXY: z.coerce.boolean().default(false),
+  STELLAR_META_CACHE_ENABLED: z.coerce.boolean().default(true),
+  STELLAR_META_CACHE_TTL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(86_400_000)
+    .default(300_000),
+  STELLAR_META_CACHE_DIR: z.string().optional(),
+  STELLAR_META_MAX_XDR_CHARS: z.coerce
+    .number()
+    .int()
+    .min(256)
+    .max(1_000_000)
+    .default(8192)
 });
 
 const NETWORK_PASSPHRASE: Record<StellarNetwork, string> = {
@@ -51,6 +69,10 @@ export interface AppConfig {
   httpMaxPayloadBytes: number;
   httpTrustProxy: boolean;
   trustedAnchorDomains: string[];
+  metaCacheEnabled: boolean;
+  metaCacheTtlMs: number;
+  metaCacheDir: string;
+  metaMaxXdrChars: number;
 }
 
 const DEFAULT_ALLOWED_HOSTS = new Set<string>([
@@ -204,6 +226,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     autoSignLimitRaw: parsed.STELLAR_AUTO_SIGN_LIMIT
   });
 
+  const metaCacheDir =
+    parsed.STELLAR_META_CACHE_DIR?.trim() ||
+    join(tmpdir(), "stellarmcp-meta-cache");
+  if (parsed.STELLAR_META_CACHE_ENABLED) {
+    try {
+      mkdirSync(metaCacheDir, { recursive: true });
+    } catch {
+      // MetaDiskCache also attempts mkdir; config load must not fail on cache dir alone.
+    }
+  }
+
   return {
     transport: parsed.MCP_TRANSPORT ?? "stdio",
     network: parsed.STELLAR_NETWORK,
@@ -223,6 +256,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     httpMaxConcurrent: parsed.MCP_HTTP_MAX_CONCURRENT,
     httpMaxPayloadBytes: parsed.MCP_HTTP_MAX_PAYLOAD_BYTES,
     httpTrustProxy: parsed.MCP_HTTP_TRUST_PROXY,
-    trustedAnchorDomains
+    trustedAnchorDomains,
+    metaCacheEnabled: parsed.STELLAR_META_CACHE_ENABLED,
+    metaCacheTtlMs: parsed.STELLAR_META_CACHE_TTL_MS,
+    metaCacheDir,
+    metaMaxXdrChars: parsed.STELLAR_META_MAX_XDR_CHARS
   };
 }

@@ -15,6 +15,9 @@ Execution-grade MCP server for the Stellar network, focused on agent-first Devel
   - `stellar_xdr_guess` — candidate types for a base64 XDR blob
   - `stellar_xdr_encode` — JSON (string or object) → base64 XDR
   - `stellar_decode_xdr` — classic transaction XDR → Horizon-style operation JSON (unchanged contract)
+- Historical meta (read-only, bounded, Horizon-first with Soroban RPC fallback, optional disk cache):
+  - `stellar_get_ledger_meta` — ledger header XDR (+ RPC `LedgerCloseMeta` when Horizon misses and the ledger is in RPC retention)
+  - `stellar_get_transaction_meta` — transaction envelope/result/result-meta/fee-meta XDR with truncation metadata; optional `operation_index` slices decoded `TransactionMeta` when not truncated
 - Anchor and Smart Contract integrations:
   - `stellar_sep10_auth`
   - `stellar_get_sep38_quote`
@@ -67,6 +70,17 @@ MCP_HTTP_MAX_CONCURRENT=20
 MCP_HTTP_MAX_PAYLOAD_BYTES=262144
 MCP_HTTP_TRUST_PROXY=false
 ```
+
+Historical meta cache (optional; defaults on, under the system temp directory):
+
+```bash
+# STELLAR_META_CACHE_ENABLED=true
+# STELLAR_META_CACHE_TTL_MS=300000
+# STELLAR_META_CACHE_DIR=/path/to/writable/dir
+# STELLAR_META_MAX_XDR_CHARS=8192
+```
+
+Operational notes for `STELLAR_META_*`: these variables only control cache directories, TTL, and per-field XDR size limits — they are not secret-bearing. Ensure `STELLAR_META_CACHE_DIR` (or the default temp path) is writable: read-only filesystems, strict container sandboxes, or full disks cause cache writes to fail silently (`freshness.cacheWriteOk` may be `false`); the tools still return upstream data. In Kubernetes or ephemeral containers, point `STELLAR_META_CACHE_DIR` at an emptyDir volume if you want caching across process lifetime.
 
 If `MCP_HTTP_TRUST_PROXY=true`, ensure the server runs behind a trusted proxy that overwrites the `X-Forwarded-For` header; otherwise, client IP spoofing can severely weaken rate-limiting controls.
 
@@ -172,6 +186,27 @@ Classic transaction decode (SDK `Transaction` view; network passphrase from conf
 
 ```json
 { "name": "stellar_decode_xdr", "arguments": { "xdr": "<base64 transaction XDR>" } }
+```
+
+## Historical meta tools (examples)
+
+Ledger header (closed ledger sequence):
+
+```json
+{ "name": "stellar_get_ledger_meta", "arguments": { "ledgerSequence": 123456 } }
+```
+
+Transaction meta with optional per-operation slice (when `resultMetaXdr` is not truncated):
+
+```json
+{
+  "name": "stellar_get_transaction_meta",
+  "arguments": {
+    "transactionHash": "<64-char hex>",
+    "operationIndex": 0,
+    "maxXdrCharsPerField": 8192
+  }
+}
 ```
 
 ## Testing & Verification

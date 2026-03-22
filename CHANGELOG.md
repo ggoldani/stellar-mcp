@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-03-22
+
+- Phase B (historical meta): add read-only `stellar_get_ledger_meta` and `stellar_get_transaction_meta` with Horizon-first upstream, Soroban RPC fallback, bounded base64 XDR fields (truncation metadata), freshness/cache metadata, and optional `operation_index` via `TransactionMeta` JSON decode.
+- Add disk-backed TTL cache (`STELLAR_META_CACHE_*`) and `STELLAR_META_MAX_XDR_CHARS` default; treat `NotFoundError` as Horizon miss for fallback.
+- Add `tests/meta.test.ts` plus `isHorizonAxiosNotFound` coverage in `tests/errors.test.ts`.
+- Extract `buildTransactionMetaOperationSlice` (`src/lib/metaOperationSlice.ts`) with fixture-backed tests for complete, truncated, out-of-range, and invalid-XDR paths; CI runs `npm run verify:phase:b`; README documents meta cache operational risks.
+
 ## 0.1.4 - 2026-03-21
 
 - Phase A (XDR parity): add `stellar_xdr_types`, `stellar_xdr_json_schema`, `stellar_xdr_guess`, and `stellar_xdr_encode` using `@stellar/stellar-xdr-json` (WASM initialized via `initSync` and `require.resolve` for Node).

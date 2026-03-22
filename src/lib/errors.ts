@@ -1,3 +1,5 @@
+import { NotFoundError as StellarNotFoundError } from "@stellar/stellar-sdk";
+
 export class NetworkError extends Error {
   constructor(message: string) {
     super(message);
@@ -163,4 +165,28 @@ export function mapUnknownError(error: unknown): Error {
     return error;
   }
   return new Error("Unexpected non-error exception thrown.");
+}
+
+/**
+ * Detect Horizon HTTP 404 (resource missing) for RPC fallback paths.
+ * Walks Error.cause when present (SDK / fetch wrappers).
+ */
+export function isHorizonAxiosNotFound(error: unknown): boolean {
+  if (error instanceof StellarNotFoundError) {
+    return true;
+  }
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const any = error as {
+    response?: { status?: number };
+    cause?: unknown;
+  };
+  if (any.response?.status === 404) {
+    return true;
+  }
+  if (any.cause) {
+    return isHorizonAxiosNotFound(any.cause);
+  }
+  return false;
 }
