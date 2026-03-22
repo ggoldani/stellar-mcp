@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.4 - 2026-03-21
+
+- Phase A (XDR parity): add `stellar_xdr_types`, `stellar_xdr_json_schema`, `stellar_xdr_guess`, and `stellar_xdr_encode` using `@stellar/stellar-xdr-json` (WASM initialized via `initSync` and `require.resolve` for Node).
+- Register XDR tools in `src/tools/xdr.ts`; keep `stellar_decode_xdr` behavior as the existing `Transaction`-based decoder (moved from `network.ts` with the same output shape).
+- Add `tests/xdr.test.ts` (roundtrip, guess, error-hint coverage).
+
 ## 0.1.3 - 2026-03-18
 
 - Add 3-level auto-sign policy runtime:

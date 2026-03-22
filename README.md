@@ -9,6 +9,12 @@ Execution-grade MCP server for the Stellar network, focused on agent-first Devel
   - `stellar_submit_payment`
   - `stellar_create_trustline`
   - `stellar_get_fee_stats`
+- XDR utilities (JSON schema engine via `@stellar/stellar-xdr-json`):
+  - `stellar_xdr_types` — list supported XDR type names (optional `prefix` filter)
+  - `stellar_xdr_json_schema` — Draft-7 JSON Schema for a type
+  - `stellar_xdr_guess` — candidate types for a base64 XDR blob
+  - `stellar_xdr_encode` — JSON (string or object) → base64 XDR
+  - `stellar_decode_xdr` — classic transaction XDR → Horizon-style operation JSON (unchanged contract)
 - Anchor and Smart Contract integrations:
   - `stellar_sep10_auth`
   - `stellar_get_sep38_quote`
@@ -26,6 +32,12 @@ npm run build
 ```
 
 ## Configuration
+
+Start from the provided example:
+
+```bash
+cp .env.example .env
+```
 
 Required baseline configuration:
 
@@ -130,6 +142,36 @@ Cursor / Windsurf (`http-sse` via `/mcp`):
     }
   }
 }
+```
+
+## XDR tools (examples)
+
+List types (optional prefix filter):
+
+```json
+{ "name": "stellar_xdr_types", "arguments": { "prefix": "Transaction" } }
+```
+
+Schema then encode (use the `schema` field from the response to shape `json`):
+
+```json
+{ "name": "stellar_xdr_json_schema", "arguments": { "type": "TransactionEnvelope" } }
+```
+
+```json
+{ "name": "stellar_xdr_encode", "arguments": { "type": "TransactionEnvelope", "json": "<JSON string from decode or your builder>" } }
+```
+
+Guess type from raw XDR:
+
+```json
+{ "name": "stellar_xdr_guess", "arguments": { "xdr": "<base64>" } }
+```
+
+Classic transaction decode (SDK `Transaction` view; network passphrase from config):
+
+```json
+{ "name": "stellar_decode_xdr", "arguments": { "xdr": "<base64 transaction XDR>" } }
 ```
 
 ## Testing & Verification
