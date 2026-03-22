@@ -112,7 +112,7 @@ async function getHealthResponse(config: AppConfig): Promise<HealthResponse> {
     transport: "http-sse",
     horizonReachable,
     rpcReachable,
-    version: "0.1.0"
+    version: "0.1.7"
   };
 }
 

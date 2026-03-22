@@ -1,15 +1,19 @@
 {
   "name": "stellarmcp",
-  "version": "0.1.0",
+  "version": "0.1.7",
   "description": "Stellar MCP server focused on execution-grade agent tooling.",
   "license": "MIT",
   "type": "module",
   "main": "build/src/index.js",
   "bin": {
-    "stellarmcp": "build/src/index.js"
+    "stellarmcp": "build/src/index.js",
+    "stellarmcp-generate": "build/src/generator/cli.js"
   },
   "files": [
-    "build",
+    "build/src",
+    "templates",
+    "src/lib/errors.ts",
+    "src/lib/redact.ts",
     "README.md",
     "CHANGELOG.md"
   ],
@@ -23,7 +27,9 @@
     "verify:base": "npm run typecheck && npm run test",
     "verify:phase:a": "npm run verify:base && npm run smoke:phase1",
     "verify:phase:b": "npm run verify:base && npm run smoke:phase1 && npm run smoke:autonomy:mock",
-    "verify:phase:c": "npm run verify:base && npm run smoke:phase1 && npm run smoke:autonomy:mock",
+    "verify:phase:c": "npm run verify:base && npm run smoke:phase1 && npm run smoke:autonomy:mock && npm run pack:sanity && GENERATOR_E2E_FULL=1 npm run generator:e2e",
+    "generator:e2e": "node scripts/generator-e2e.mjs",
+    "pack:sanity": "node scripts/npm-pack-sanity.mjs",
     "dev": "tsx src/index.ts",
     "start:stdio": "node build/src/index.js",
     "start:http": "MCP_TRANSPORT=http-sse node build/src/index.js",

@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   const client = new Client({
     name: "stellarmcp-tier1-smoke",
-    version: "0.1.0"
+    version: "0.1.7"
   });
 
   try {

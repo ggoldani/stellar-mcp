@@ -15,22 +15,24 @@ Use this checklist before requesting phase sign-off.
 - [x] Phase-specific verification command passes:
   - [x] Phase A: `npm run verify:phase:a`
   - [x] Phase B: `npm run verify:phase:b`
-  - [ ] Phase C: `npm run verify:phase:c` (intentionally unchecked — blocked until Phase B owner approval)
-  - [ ] Phase D: deferred by master plan; not applicable until C completes and D is re-approved
+  - [x] Phase C: `npm run verify:phase:c`
+  - [ ] Phase D: deferred by master plan; not applicable until owner re-approves D after C sign-off
 - [x] Impacted-domain regressions were run (Accounts, Payments, SEP, Soroban, XDR, Meta).
-  - **Note:** Full `npm run test` + `smoke:phase1` + `smoke:autonomy:mock` (via `verify:phase:b`) cover domains; meta covered by `tests/meta.test.ts` and operation-slice tests.
+  - **Note:** `verify:phase:c` includes full `npm run test`, `smoke:phase1`, `smoke:autonomy:mock`, `pack:sanity`, and full generator E2E (baseline + exotic nested `npm install`/`typecheck`).
 - [x] Security checks validated (redaction, allowlist, policy behavior).
-  - **Note:** Meta tools use `redactSensitiveText` / `sanitizeDebugPayload`; read-only; `STELLAR_META_*` envs are non-secret.
+  - **Note:** Generator copies `errors.ts`/`redact.ts` with byte-for-byte conformance tests; generated `contractInvoke` uses `normalizeStellarError`, `redactSensitiveText`, `sanitizeDebugPayload`, signing policy parity.
 
 ## Evidence and Sign-off
 
 - [x] Evidence Note is attached with commands and key outputs (see PR body / merge request).
 - [x] README/CHANGELOG updated if behavior changed.
-- [ ] Owner explicitly approved Phase B. **Pending:** await owner decision after PR review (APPROVED / CHANGES_REQUESTED).
-- [x] Next phase (C) only starts after Phase B owner approval.
+- [ ] Owner explicitly approved Phase C. **Pending:** await owner decision after PR review (APPROVED / CHANGES_REQUESTED).
+- [ ] Phase D only starts after Phase C owner approval and explicit D re-approval per master plan.
 
 ---
 
 _Phase A closure checkpoint completed: 2026-03-21 (verification re-run + PR)._
 
-_Phase B closure checkpoint prepared: 2026-03-22 (verify:phase:b + CI alignment + review)._
+_Phase B closure checkpoint completed: 2026-03-22 (merged to main)._
+
+_Phase C closure checkpoint prepared: 2026-03-22 (`verify:phase:c` + CI + PR)._
