@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { NotFoundError } from "@stellar/stellar-sdk";
 
 import {
+  isHorizonAxiosNotFound,
   mapUnknownError,
   mapStellarResultCodes,
   normalizeStellarError,
@@ -65,4 +67,21 @@ test("mapStellarResultCodes tx_bad_auth includes network mismatch guidance", () 
 test("mapUnknownError wraps non-error throwables", () => {
   const mapped = mapUnknownError("boom");
   assert.equal(mapped.message, "Unexpected non-error exception thrown.");
+});
+
+test("isHorizonAxiosNotFound detects Stellar NotFoundError", () => {
+  assert.equal(isHorizonAxiosNotFound(new NotFoundError("missing", {})), true);
+});
+
+test("isHorizonAxiosNotFound detects axios-style 404", () => {
+  assert.equal(isHorizonAxiosNotFound({ response: { status: 404 } }), true);
+});
+
+test("normalizeStellarError preserves string-throw meta load errors", () => {
+  const err = new Error(
+    "Ledger 999999999 not found on Horizon (404) and Soroban RPC getLedgers returned no ledgers (check RPC retention window and sequence)."
+  );
+  const mapped = normalizeStellarError(err);
+  assert.ok(mapped instanceof Error);
+  assert.match(mapped.message, /Ledger 999999999/i);
 });

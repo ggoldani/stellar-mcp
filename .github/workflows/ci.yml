@@ -22,11 +22,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify base
-        run: npm run verify:base
-
-      - name: Smoke phase foundation
-        run: npm run smoke:phase1
-
-      - name: Smoke autonomy mock
-        run: npm run smoke:autonomy:mock
+      - name: Phase B gate (typecheck, tests, smoke)
+        run: npm run verify:phase:b
