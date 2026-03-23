@@ -2,6 +2,7 @@
 
 ## 0.1.7 - 2026-03-22
 
+- **npm package name:** publish as **`@ggoldani/stellarmcp`** (`publishConfig.access: public`). The unscoped name `stellarmcp` is rejected by the registry as too similar to the existing package **`stellar-mcp`**. Generator `findStellarMcpPackageRoot` accepts any `@[scope]/stellarmcp` (and legacy `stellarmcp` for local dev).
 - Phase C pre-closure: `verify:phase:c` runs `pack:sanity` (`npm pack --dry-run --json` checks for templates, shipped `errors.ts`/`redact.ts`, and `build/src/generator/cli.js`) and **full** `generator:e2e` (baseline + exotic fixture outputs, nested `npm ci`/`npm install` + `typecheck`, configurable timeouts; quick local path via default `generator:e2e` or `GENERATOR_E2E_QUICK=1`).
 - Narrow `package.json` `files` to `build/src` so E2E artifacts under `build/` are never published; CI workflow runs `verify:phase:c` (30m timeout).
 - Add `tests/fixtures/contract-spec-exotic-fixture.json` (map-typed arg), generator tests for loose schemas + **byte-identical** `errors.ts`/`redact.ts` copy guard; document non-goals for `z.unknown()` / loose edges in README.

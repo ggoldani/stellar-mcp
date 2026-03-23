@@ -24,6 +24,7 @@ const transactionHashSchema = z
   .string()
   .trim()
   .regex(/^[a-fA-F0-9]{64}$/, "Expected 64-character hex transaction hash")
+  .describe("64-character lowercase hex transaction hash")
   .transform((h) => h.toLowerCase());
 
 const maxXdrCharsSchema = z

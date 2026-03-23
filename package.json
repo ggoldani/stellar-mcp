@@ -1,26 +1,53 @@
 {
-  "name": "stellarmcp",
+  "name": "@ggoldani/stellarmcp",
   "version": "0.1.7",
   "description": "Stellar MCP server focused on execution-grade agent tooling.",
   "license": "MIT",
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "build/src/index.js",
   "bin": {
     "stellarmcp": "build/src/index.js",
     "stellarmcp-generate": "build/src/generator/cli.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ggoldani/stellar-mcp.git"
+  },
+  "homepage": "https://github.com/ggoldani/stellar-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/ggoldani/stellar-mcp/issues"
+  },
+  "keywords": [
+    "stellar",
+    "mcp",
+    "model-context-protocol",
+    "soroban",
+    "horizon",
+    "blockchain",
+    "anchor",
+    "sep",
+    "xdr",
+    "cursor",
+    "claude"
+  ],
   "files": [
     "build/src",
     "templates",
     "src/lib/errors.ts",
     "src/lib/redact.ts",
+    ".env.example",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "docs/TOOLS.md"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
+    "prepack": "node scripts/prepack-build.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node --test build/tests/*.test.js",
@@ -30,13 +57,15 @@
     "verify:phase:c": "npm run verify:base && npm run smoke:phase1 && npm run smoke:autonomy:mock && npm run pack:sanity && GENERATOR_E2E_FULL=1 npm run generator:e2e",
     "generator:e2e": "node scripts/generator-e2e.mjs",
     "pack:sanity": "node scripts/npm-pack-sanity.mjs",
+    "docs:tools": "npm run build && node scripts/render-tools-md.mjs",
     "dev": "tsx src/index.ts",
     "start:stdio": "node build/src/index.js",
     "start:http": "MCP_TRANSPORT=http-sse node build/src/index.js",
     "smoke:phase1": "node build/tests/smoke.js",
     "smoke:autonomy:mock": "node build/tests/smoke-autonomy-mock.js",
     "smoke:tier1:friendbot": "node build/tests/smoke-tier1-friendbot.js",
-    "smoke:tier1:testnet": "node build/tests/smoke-tier1-testnet.js"
+    "smoke:tier1:testnet": "node build/tests/smoke-tier1-testnet.js",
+    "smoke:testnet:readonly": "npm run build && node build/tests/smoke-testnet-readonly.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

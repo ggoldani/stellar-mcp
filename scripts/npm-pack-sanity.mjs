@@ -52,6 +52,8 @@ function mustHave(predicate, label) {
 mustHave((p) => p.startsWith("templates/generated-mcp/"), "templates/generated-mcp/**");
 mustHave((p) => p === "src/lib/errors.ts", "src/lib/errors.ts");
 mustHave((p) => p === "src/lib/redact.ts", "src/lib/redact.ts");
+mustHave((p) => p === ".env.example", ".env.example");
+mustHave((p) => p === "docs/TOOLS.md", "docs/TOOLS.md");
 mustHave((p) => p === "build/src/generator/cli.js", "build/src/generator/cli.js");
 
 console.error(`pack:sanity OK (${paths.size} paths in dry-run tarball).`);

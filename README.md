@@ -1,213 +1,120 @@
 # StellarMCP
 
-Execution-grade MCP server for the Stellar network, focused on agent-first Developer Experience (DX) and integrations with Anchors (SEPs) and Smart Contracts (Soroban).
+[MCP](https://modelcontextprotocol.io) server for **Stellar**: accounts, payments, XDR, Horizon/Soroban RPC, AMM liquidity, SEP anchors, and Soroban (simulate, invoke, events, deploy, contract state). Intended for **agents and IDE integrations** (Cursor, Claude Desktop, etc.) with strict validation, normalized errors, and redacted `_debug` fields.
 
-## Features
+**All tools (names, descriptions, parameters):** **[`docs/TOOLS.md`](docs/TOOLS.md)** — auto-generated from the same `tools/list` your MCP client sees; attach or paste it when asking an agent *how to use this server*.
 
-- Tier-1 foundation tools:
-  - `stellar_get_account`
-  - `stellar_submit_payment`
-  - `stellar_create_trustline`
-  - `stellar_get_fee_stats`
-- XDR utilities (JSON schema engine via `@stellar/stellar-xdr-json`):
-  - `stellar_xdr_types` — list supported XDR type names (optional `prefix` filter)
-  - `stellar_xdr_json_schema` — Draft-7 JSON Schema for a type
-  - `stellar_xdr_guess` — candidate types for a base64 XDR blob
-  - `stellar_xdr_encode` — JSON (string or object) → base64 XDR
-  - `stellar_decode_xdr` — classic transaction XDR → Horizon-style operation JSON (unchanged contract)
-- Historical meta (read-only, bounded, Horizon-first with Soroban RPC fallback, optional disk cache):
-  - `stellar_get_ledger_meta` — ledger header XDR (+ RPC `LedgerCloseMeta` when Horizon misses and the ledger is in RPC retention)
-  - `stellar_get_transaction_meta` — transaction envelope/result/result-meta/fee-meta XDR with truncation metadata; optional `operation_index` slices decoded `TransactionMeta` when not truncated
-- Anchor and Smart Contract integrations:
-  - `stellar_sep10_auth`
-  - `stellar_get_sep38_quote`
-  - Full Soroban support (simulate, invoke, read)
-- Strict typing with TypeScript, robust input validation via Zod, actionable error mapping, and sanitized `_debug` outputs.
-- Multiple transport modes support:
-  - `stdio` (Ideal for Claude Desktop)
-  - Streamable HTTP/SSE via `/mcp` (Ideal for integrations like Cursor/Windsurf).
+**Requirements:** Node.js **≥ 20**. · **Source:** [github.com/ggoldani/stellar-mcp](https://github.com/ggoldani/stellar-mcp)
 
-## Installation
+---
+
+## Table of contents
+
+- [Quick start](#quick-start)
+- [Sanity check (first call)](#sanity-check-first-call)
+- [Run the server](#run-the-server)
+- [Connect your MCP client](#connect-your-mcp-client)
+- [Environment variables](#environment-variables)
+- [Security](#security)
+- [Tools reference](#tools-reference)
+- [Example tool calls](#example-tool-calls)
+- [Tools reference (detailed — docs/TOOLS.md)](docs/TOOLS.md)
+- [Soroban contract MCP generator](#soroban-contract-mcp-generator)
+- [Troubleshooting](#troubleshooting)
+- [Development & testing](#development--testing)
+
+---
+
+## Quick start
+
+### From a clone (this repository)
 
 ```bash
+git clone https://github.com/ggoldani/stellar-mcp.git
+cd stellar-mcp
 npm install
 npm run build
 ```
 
-## Soroban MCP generator (Phase C)
+Run the server (see [Run the server](#run-the-server)), then [connect your MCP client](#connect-your-mcp-client).
 
-Production scope is **CLI-first**: you generate a **standalone** Node MCP package (stdio) from a deployed contract’s WASM custom section or from a checked-in spec JSON. The template copies StellarMCP’s `normalizeStellarError` + `redact`/`sanitizeDebug` behavior into the output so generated servers stay aligned with the main server’s security baseline.
+### From npm
 
-### Inputs
+**Package on npm:** [`@ggoldani/stellarmcp`](https://www.npmjs.com/package/@ggoldani/stellarmcp) (scoped package).
 
-1. **Contract WASM** (`.wasm`) — `Spec.fromWasm` reads the `contractspecv0` section (same as `@stellar/stellar-sdk/contract` `Spec`).
-2. **Spec JSON** — canonical manifest:
-
-```json
-{
-  "format": "stellarmcp-contract-spec-v1",
-  "version": 1,
-  "entries": ["<base64 ScSpecEntry>", "..."]
-}
-```
-
-Each `entries[]` element is one base64-encoded `ScSpecEntry` XDR value (as produced by the SDK from an on-disk WASM or your own tooling).
-
-### Outputs (generated layout)
-
-Under `--out <dir>`:
-
-- `package.json`, `tsconfig.json` — pinned to the same `@modelcontextprotocol/sdk`, `@stellar/stellar-sdk`, and `zod` versions as the generator release.
-- `src/index.ts` — stdio MCP entrypoint.
-- `src/config.ts` — Zod-validated env (`STELLAR_CONTRACT_ID`, `STELLAR_NETWORK`, RPC/Horizon URLs, signing policy mirrors main server semantics).
-- `src/registerContractTools.ts` — one MCP tool per contract function: `{alias}_{method}`.
-- `src/generated/schemas.ts` — per-method Zod input shapes (plus `contractId` override and `sourceAccount`).
-- `src/generated/specEntries.ts` — embedded spec entries.
-- `src/generated/meta.ts` — `GENERATOR_ARTIFACT_VERSION`, `STELLARMCP_GENERATOR_SEMVER`, `SPEC_FINGERPRINT`, compatibility note.
-- `src/generated/typedClient.ts` — typed argument helpers for non-MCP TypeScript callers.
-- `src/lib/*` — `contractInvoke.ts`, `stellarClient.ts`, `policy.ts`, and **copies** of `errors.ts` / `redact.ts` from this repo at generation time.
-
-### CLI
-
-After `npm run build` in this repository:
+The published tarball includes **`build/src`**, **`templates/`**, **generator inputs** (`src/lib/errors.ts`, `redact.ts`), **`.env.example`**, and docs — enough to run the server and `stellarmcp-generate` without cloning.
 
 ```bash
-node build/src/generator/cli.js --input path/to/contract.wasm --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
-# or
-node build/src/generator/cli.js --input path/to/spec.json --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
+npm install @ggoldani/stellarmcp
+npx stellarmcp
+# or: npx @ggoldani/stellarmcp
 ```
 
-Published installs expose the same entry as `stellarmcp-generate`.
+- Env template: **`node_modules/@ggoldani/stellarmcp/.env.example`** → copy to your project as `.env` if needed.
+- MCP **stdio** when the package is a dependency (example): `"args": ["${workspaceFolder}/node_modules/@ggoldani/stellarmcp/build/src/index.js"]`.
 
-Then inside the output directory: `npm install && npm run build && STELLAR_CONTRACT_ID=C... STELLAR_NETWORK=testnet node build/src/index.js`.
+Prefer GitHub if you are **developing or patching** this repository ([clone](#from-a-clone-this-repository)).
 
-### Explicit non-goals (current cycle)
+---
 
-- No generated HTTP/SSE transport (stdio only); add your own transport only if you accept the security review burden.
-- No multi-contract orchestration, workspace monorepos, or automatic publish to npm.
-- **Unknown or exotic spec shapes:** parameters that the generator does not model precisely are emitted as `z.unknown()`, `z.record(z.string(), z.unknown())`, or similar **loose** Zod at the edges. That passes MCP/schema plumbing but does **not** replace Soroban correctness: agents and operators must still supply arguments that `Spec.funcArgsToScVals` and RPC simulation accept (fix shapes when simulation fails).
-- Deep tuples, some UDTs, and other rare arms follow the same pattern: static types are best-effort; **simulation-time** validation remains authoritative.
-- Phase D CLI bridge remains **out of scope** (see master plan).
+## Sanity check (first call)
 
-### Versioning and compatibility
+Use this to confirm wiring before deeper integration:
 
-- **`GENERATOR_ARTIFACT_VERSION`** bumps when the generator changes output shape or conventions.
-- **`SPEC_FINGERPRINT`** hashes sorted spec entries; use it to detect unchanged contracts across regenerations.
-- Regenerate after upgrading the parent `stellarmcp` package or changing the contract interface.
+1. **HTTP mode:** with `MCP_TRANSPORT=http-sse` running, open `GET /health` (expect JSON with `network`, `horizonReachable`, `rpcReachable`).
+2. **Any MCP host:** call tool **`stellar_get_fee_stats`** with **`{}`**. Expect fields like `baseFee`, `p99`, `recommendedFee` (see [Example tool calls](#example-tool-calls)).
 
-## Configuration
+If that works, Horizon is reachable and the server is usable for read-only tools without a secret key.
 
-Start from the provided example:
+For **every tool name and argument shape**, use **[`docs/TOOLS.md`](docs/TOOLS.md)** (or your host’s MCP tool picker).
 
-```bash
-cp .env.example .env
-```
+---
 
-Required baseline configuration:
+## Run the server
 
-```bash
-STELLAR_NETWORK=testnet # mainnet or testnet
-```
 
-Optional endpoints and signer credentials:
+| Mode                | Command                                               | Notes                                                                                                               |
+| ------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **stdio** (default) | `npm run start:stdio` or `node build/src/index.js`    | Best for Claude Desktop, Cursor stdio, local agents.                                                                |
+| **Streamable HTTP** | `MCP_TRANSPORT=http-sse PORT=3000 npm run start:http` | MCP endpoint: `http://<host>:<PORT>/mcp`. Health: `GET /health` (JSON: network, Horizon/RPC reachability, version). |
 
-```bash
-STELLAR_HORIZON_URL=https://horizon-testnet.stellar.org
-STELLAR_RPC_URL=https://soroban-testnet.stellar.org
-STELLAR_SECRET_KEY=S...
-STELLAR_SEP38_URL=https://anchor.example.com/price
-STELLAR_AUTO_SIGN_POLICY=safe
-STELLAR_AUTO_SIGN_LIMIT=0
-STELLAR_USDC_ISSUER=GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN
-```
 
-Security-focused controls:
+After `npm run build`, the entrypoint is **`build/src/index.js`**.
 
-```bash
-STELLAR_ALLOWED_HOSTS=custom.provider.example
-STELLAR_TRUSTED_ANCHOR_DOMAINS=anchor.example.com
-MCP_HTTP_RATE_LIMIT_PER_MIN=60
-MCP_HTTP_MAX_CONCURRENT=20
-MCP_HTTP_MAX_PAYLOAD_BYTES=262144
-MCP_HTTP_TRUST_PROXY=false
-```
+---
 
-Historical meta cache (optional; defaults on, under the system temp directory):
+## Connect your MCP client
 
-```bash
-# STELLAR_META_CACHE_ENABLED=true
-# STELLAR_META_CACHE_TTL_MS=300000
-# STELLAR_META_CACHE_DIR=/path/to/writable/dir
-# STELLAR_META_MAX_XDR_CHARS=8192
-```
+### stdio (recommended locally)
 
-Operational notes for `STELLAR_META_*`: these variables only control cache directories, TTL, and per-field XDR size limits — they are not secret-bearing. Ensure `STELLAR_META_CACHE_DIR` (or the default temp path) is writable: read-only filesystems, strict container sandboxes, or full disks cause cache writes to fail silently (`freshness.cacheWriteOk` may be `false`); the tools still return upstream data. In Kubernetes or ephemeral containers, point `STELLAR_META_CACHE_DIR` at an emptyDir volume if you want caching across process lifetime.
-
-If `MCP_HTTP_TRUST_PROXY=true`, ensure the server runs behind a trusted proxy that overwrites the `X-Forwarded-For` header; otherwise, client IP spoofing can severely weaken rate-limiting controls.
-
-## Deployment Security Modes
-
-Recommended default: Local-First.
-
-- Local-First (recommended): run over `stdio` or local `http-sse` on your machine. Keep your `STELLAR_SECRET_KEY` strictly within your local environment.
-- Cloud Read-Only: deploy without a `STELLAR_SECRET_KEY`. Write tools will return unsigned XDR payloads for external signing.
-- Cloud Auto-Sign Hardened: recommended only for mature operations teams with strict secret management, tight network controls, active monitoring, and incident response plans.
-
-## Auto-Sign Policy
-
-Write tools (e.g., `stellar_submit_payment`, `stellar_create_trustline`) enforce the following policies:
-
-- `STELLAR_AUTO_SIGN_POLICY=safe` (recommended default):
-  - Forces unsigned mode (`autoSign=false`, `limit=0`).
-  - All write tools return unsigned XDR payloads only.
-- `STELLAR_AUTO_SIGN_POLICY=guarded`:
-  - Forces auto-sign enabled, requiring a strictly positive cap (`STELLAR_AUTO_SIGN_LIMIT>0`).
-  - Signs a transaction only when a reliable USDC valuation is available and the value falls within the established limit.
-  - Fails closed (blocks signing) when an accurate valuation is unavailable.
-- `STELLAR_AUTO_SIGN_POLICY=expert`:
-  - Forces unlimited auto-sign (`autoSign=true`, `limit=0`).
-  - Automatically signs and submits all write transactions.
-
-Backward compatibility:
-
-- If `STELLAR_AUTO_SIGN_POLICY` is unset, legacy environment variables are respected:
-  - `STELLAR_AUTO_SIGN`
-  - `STELLAR_AUTO_SIGN_LIMIT`
-
-## Execution
-
-`stdio` mode:
-
-```bash
-npm run start:stdio
-```
-
-HTTP/SSE mode:
-
-```bash
-MCP_TRANSPORT=http-sse PORT=3000 npm run start:http
-```
-
-## Client Integration Examples
-
-Claude Desktop (`stdio`):
+Point your host at Node and the built entrypoint. Example shape (paths must be **absolute** or use your editor’s variable such as `${workspaceFolder}`):
 
 ```json
 {
   "mcpServers": {
     "stellarmcp": {
+      "type": "stdio",
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/stellarmcp/build/src/index.js"],
       "env": {
-        "STELLAR_NETWORK": "testnet",
-        "STELLAR_SECRET_KEY": "S..."
+        "MCP_TRANSPORT": "stdio",
+        "STELLAR_NETWORK": "testnet"
       }
     }
   }
 }
 ```
 
-Cursor / Windsurf (`http-sse` via `/mcp`):
+- **Cursor:** project config `~/.cursor/mcp.json` or `.cursor/mcp.json` — see [Cursor MCP docs](https://cursor.com/docs/context/mcp) (interpolation: `${workspaceFolder}`, `${env:VAR}`).
+- **Claude Desktop:** `claude_desktop_config.json` under the same `mcpServers` pattern.
+- Optional: set `"envFile": "${workspaceFolder}/.env"` (stdio only in Cursor) to load secrets from a local `.env` **without** committing it.
+
+**Never commit** real `STELLAR_SECRET_KEY` or anchor tokens.
+
+### HTTP / SSE
+
+1. Start the server with `MCP_TRANSPORT=http-sse` and choose `PORT`.
+2. In the client, register the remote server, for example:
 
 ```json
 {
@@ -219,45 +126,182 @@ Cursor / Windsurf (`http-sse` via `/mcp`):
 }
 ```
 
-## XDR tools (examples)
+3. Verify **`GET http://localhost:3000/health`** before debugging MCP calls.
 
-List types (optional prefix filter):
+---
+
+## Environment variables
+
+**Authoritative template:** copy `[.env.example](./.env.example)` to `.env` and edit.
+
+
+| Variable                         | Required | Purpose                                                                                          |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `MCP_TRANSPORT`                  | No       | `stdio` (default) or `http-sse`.                                                                 |
+| `STELLAR_NETWORK`                | No       | `testnet` (default) or `mainnet`.                                                                |
+| `STELLAR_HORIZON_URL`            | No       | Horizon base URL (**https**; host must be default-allowed or listed in `STELLAR_ALLOWED_HOSTS`). |
+| `STELLAR_RPC_URL`                | No       | Soroban RPC URL (same rules as Horizon).                                                         |
+| `STELLAR_SEP38_URL`              | No       | Anchor SEP-38 endpoint for quotes.                                                               |
+| `STELLAR_ALLOWED_HOSTS`          | No       | Comma-separated extra hostnames allowed for the three URL vars above.                            |
+| `STELLAR_TRUSTED_ANCHOR_DOMAINS` | No       | Comma-separated domains allowed for anchor/TOML and SEP flows.                                   |
+| `STELLAR_SECRET_KEY`             | No       | Signing key; omit for read-only / unsigned-XDR-only operation.                                   |
+| `STELLAR_AUTO_SIGN_POLICY`       | No       | `safe`, `guarded`, or `expert` — see [Security](#security).                  |
+| `STELLAR_AUTO_SIGN`              | No       | Legacy if policy unset.                                                                          |
+| `STELLAR_AUTO_SIGN_LIMIT`        | No       | Legacy / used with `guarded` (must be > 0).                                                      |
+| `STELLAR_USDC_ISSUER`            | No       | USDC issuer for valuation in guarded signing (default is network USDC).                          |
+| `PORT`                           | No       | HTTP server port (default `3000`).                                                               |
+| `STELLAR_REQUEST_TIMEOUT_MS`     | No       | Upstream request timeout (max 30000).                                                            |
+| `MCP_HTTP_*`                     | No       | Rate limit, concurrency, max POST body, `TRUST_PROXY` — see `.env.example`.                      |
+| `STELLAR_META_*`                 | No       | Disk cache + XDR size limits for meta tools — see `.env.example`.                                |
+
+
+Custom Horizon/RPC/SEP-38 URLs must use **https** and **non-private** hosts; unknown hosts require `STELLAR_ALLOWED_HOSTS`.
+
+---
+
+## Security
+
+1. **Secrets:** Treat `STELLAR_SECRET_KEY` like production key material. Prefer env or `envFile`; never commit secrets; restrict file permissions on `.env`.
+2. **Auto-sign policy** (write tools: payments, trustlines, liquidity, `set_options`, fee bump, Soroban invoke/deploy, relevant SEP flows):
+   - **`safe`** (recommended): unsigned mode — write tools return **unsigned XDR** for external signing when applicable.
+   - **`guarded`**: auto-sign enabled only with **`STELLAR_AUTO_SIGN_LIMIT` > 0** and USDC-based valuation rules; fails closed when value cannot be bounded.
+   - **`expert`**: unlimited auto-sign — use only with full awareness of risk.
+3. **Network exposure:** If you expose HTTP/SSE, use TLS in front, sane firewall rules, and review `MCP_HTTP_*`. **`MCP_HTTP_TRUST_PROXY=true`** only behind a **trusted** proxy that sets `X-Forwarded-For` correctly.
+4. **Allowlists:** Use `STELLAR_ALLOWED_HOSTS` and `STELLAR_TRUSTED_ANCHOR_DOMAINS` when pointing at non-default infrastructure or anchors.
+5. **Read-only deployments:** Omit `STELLAR_SECRET_KEY`; read and simulate tools still work; writes yield unsigned payloads or explicit errors.
+
+---
+
+## Tools reference
+
+**Full detail for agents (every tool, descriptions, parameter tables from live `tools/list`):** **[`docs/TOOLS.md`](docs/TOOLS.md)** — auto-generated; refresh with `npm run docs:tools` after you change tools.
+
+Summary below: **Read** = no transaction submission by this server; **Write** = may build/submit transactions, call Friendbot, or initiate anchor flows.
+
+### Accounts & history
+
+
+| Tool                          | Type  | Description                                                                       |
+| ----------------------------- | ----- | --------------------------------------------------------------------------------- |
+| `stellar_get_account`         | Read  | Balances, signers, flags, subentries, minimum balance.                            |
+| `stellar_get_account_history` | Read  | Paginated transaction history (`limit`, optional `cursor`).                       |
+| `stellar_fund_account`        | Write | **Testnet only** — funds via Friendbot HTTP (10k test XLM).                       |
+| `stellar_set_options`         | Write | Account options (signers, weights, flags); unsigned unless policy allows signing. |
+
+
+### Payments & fees
+
+
+| Tool                                  | Type  | Description                                          |
+| ------------------------------------- | ----- | ---------------------------------------------------- |
+| `stellar_submit_payment`              | Write | Payment; hash or unsigned XDR per policy.            |
+| `stellar_submit_fee_bump_transaction` | Write | Fee-bump an existing transaction (sponsor pays fee). |
+
+
+### Assets & AMM
+
+
+| Tool                         | Type  | Description                            |
+| ---------------------------- | ----- | -------------------------------------- |
+| `stellar_create_trustline`   | Write | Create trustline for non-native asset. |
+| `stellar_deposit_liquidity`  | Write | Deposit into classic AMM pool.         |
+| `stellar_withdraw_liquidity` | Write | Withdraw from classic AMM pool.        |
+
+
+### Network
+
+
+| Tool                    | Type | Description                            |
+| ----------------------- | ---- | -------------------------------------- |
+| `stellar_get_fee_stats` | Read | Fee stats + recommended fee (stroops). |
+
+
+### XDR
+
+
+| Tool                      | Type | Description                                                          |
+| ------------------------- | ---- | -------------------------------------------------------------------- |
+| `stellar_xdr_types`       | Read | List XDR type names (optional `prefix`).                             |
+| `stellar_xdr_json_schema` | Read | Draft-7 JSON Schema for a type.                                      |
+| `stellar_xdr_guess`       | Read | Candidate types for a base64 XDR blob.                               |
+| `stellar_xdr_encode`      | Read | JSON → base64 XDR for a named type.                                  |
+| `stellar_decode_xdr`      | Read | Classic transaction XDR → JSON (uses configured network passphrase). |
+
+
+### Historical meta (Horizon-first, Soroban RPC fallback, bounded XDR)
+
+
+| Tool                           | Type | Description                                                         |
+| ------------------------------ | ---- | ------------------------------------------------------------------- |
+| `stellar_get_ledger_meta`      | Read | Closed ledger header/metadata XDR (+ optional cache metadata).      |
+| `stellar_get_transaction_meta` | Read | Tx envelope/result/result-meta/fee-meta; optional `operationIndex`. |
+
+
+### SEP / anchors
+
+
+| Tool                        | Type  | Description                                                         |
+| --------------------------- | ----- | ------------------------------------------------------------------- |
+| `stellar_get_anchor_toml`   | Read  | Fetch/parse `stellar.toml` for SEP discovery.                       |
+| `stellar_sep10_auth`        | Write | SEP-10 challenge → JWT (requires signer / secret where applicable). |
+| `stellar_sep6_transfer`     | Write | SEP-6 deposit/withdraw initiation.                                  |
+| `stellar_sep12_customer`    | Mixed | GET/PUT KYC against anchor SEP-12 server.                           |
+| `stellar_sep24_interactive` | Write | SEP-24 interactive URL for deposit/withdraw.                        |
+| `stellar_sep31_remittance`  | Write | SEP-31 remittance initiation.                                       |
+| `stellar_get_sep38_quote`   | Read  | SEP-38 indicative quote / rate metadata.                            |
+
+
+### Soroban
+
+
+| Tool                         | Type  | Description                                                        |
+| ---------------------------- | ----- | ------------------------------------------------------------------ |
+| `stellar_soroban_simulate`   | Read  | Simulate contract call (footprint, fees, events); does not submit. |
+| `stellar_soroban_invoke`     | Write | Simulate, assemble, sign/submit per policy.                        |
+| `stellar_soroban_get_events` | Read  | Contract events from RPC (`startLedger`, filters, `limit`).        |
+| `stellar_soroban_deploy`     | Write | Deploy WASM from disk path; submit per policy.                     |
+| `stellar_soroban_read_state` | Read  | Direct `getLedgerEntries` for a contract data key.                 |
+
+
+---
+
+## Example tool calls
+
+JSON shapes are illustrative; your MCP host sends `tools/call` with `name` + `arguments`.
+
+### Fee stats (testnet)
+
+```json
+{ "name": "stellar_get_fee_stats", "arguments": {} }
+```
+
+### XDR: list types → schema → encode
 
 ```json
 { "name": "stellar_xdr_types", "arguments": { "prefix": "Transaction" } }
 ```
-
-Schema then encode (use the `schema` field from the response to shape `json`):
 
 ```json
 { "name": "stellar_xdr_json_schema", "arguments": { "type": "TransactionEnvelope" } }
 ```
 
 ```json
-{ "name": "stellar_xdr_encode", "arguments": { "type": "TransactionEnvelope", "json": "<JSON string from decode or your builder>" } }
+{ "name": "stellar_xdr_encode", "arguments": { "type": "TransactionEnvelope", "json": "<JSON string>" } }
 ```
-
-Guess type from raw XDR:
 
 ```json
 { "name": "stellar_xdr_guess", "arguments": { "xdr": "<base64>" } }
 ```
 
-Classic transaction decode (SDK `Transaction` view; network passphrase from config):
-
 ```json
-{ "name": "stellar_decode_xdr", "arguments": { "xdr": "<base64 transaction XDR>" } }
+{ "name": "stellar_decode_xdr", "arguments": { "xdr": "<base64 classic transaction XDR>" } }
 ```
 
-## Historical meta tools (examples)
-
-Ledger header (closed ledger sequence):
+### Historical meta
 
 ```json
-{ "name": "stellar_get_ledger_meta", "arguments": { "ledgerSequence": 123456 } }
+{ "name": "stellar_get_ledger_meta", "arguments": { "ledgerSequence": 123456, "maxXdrCharsPerField": 8192 } }
 ```
-
-Transaction meta with optional per-operation slice (when `resultMetaXdr` is not truncated):
 
 ```json
 {
@@ -270,62 +314,79 @@ Transaction meta with optional per-operation slice (when `resultMetaXdr` is not 
 }
 ```
 
-## Testing & Verification
+For full argument schemas, use your client’s **tool list** / schema UI or inspect Zod definitions under `src/tools/`.
 
-Phase C gate (typecheck, full tests, Tier-1 smoke, autonomy mock, **`npm pack` sanity**, **generator full E2E**):
+---
+
+## Soroban contract MCP generator
+
+Generate a **standalone** Node MCP package (stdio) from a deployed contract’s **WASM** (`contractspecv0`) or from a **spec JSON** manifest.
+
+### Inputs
+
+1. **WASM** — `Spec.fromWasm` reads the custom section (same idea as `@stellar/stellar-sdk` contract specs).
+2. **Spec JSON** — format `stellarmcp-contract-spec-v1` with `entries[]` of base64 `ScSpecEntry` XDR values.
+
+### CLI (from this repo after `npm run build`)
 
 ```bash
-npm run verify:phase:c
+node build/src/generator/cli.js --input path/to/contract.wasm --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
+# or
+node build/src/generator/cli.js --input path/to/spec.json --out ./my-contract-mcp --name my-contract-mcp --alias mytoken
 ```
 
-`verify:phase:c` runs, in order: `verify:base` (includes `tests/generator.test.ts`, copy-drift checks, exotic fixture assertions), `smoke:phase1`, `smoke:autonomy:mock`, `pack:sanity` (dry-run tarball must include `templates/generated-mcp/**`, `src/lib/errors.ts`, `src/lib/redact.ts`, `build/src/generator/cli.js`), and `generator:e2e` with **`GENERATOR_E2E_FULL=1`**: regenerates `build/generator-phasec-fixture-out` and `build/generator-phasec-exotic-out`, runs `npm ci` when a lockfile exists else `npm install`, then `npm run typecheck` in each (timeouts default 180s / 120s; override with `GENERATOR_E2E_INSTALL_TIMEOUT_MS` / `GENERATOR_E2E_TYPECHECK_TIMEOUT_MS`).
+Published installs: **`stellarmcp-generate`** (same flags).
 
-Faster local generator smoke (file presence only, **no** nested `npm install` / typecheck):
+Then in the output directory:
 
 ```bash
-npm run generator:e2e
+npm install && npm run build
+STELLAR_CONTRACT_ID=C... STELLAR_NETWORK=testnet node build/src/index.js
 ```
 
-On **CI**, `CI=true` also forces the full generator path even if you only run `generator:e2e`. To force full locally: `GENERATOR_E2E_FULL=1 npm run generator:e2e`. Explicit quick mode: `GENERATOR_E2E_QUICK=1 npm run generator:e2e` (refuses to combine with `CI` or `GENERATOR_E2E_FULL`).
+### Non-goals (current generator)
 
-Published npm tarballs list only `build/src` (not all of `build/`) so transient E2E directories under `build/` are never packed.
+- No generated HTTP/SSE transport in the scaffold (stdio only).
+- Exotic spec shapes may emit loose Zod at the edges; **simulation on RPC remains authoritative**.
+- Multi-contract workspaces / auto-publish are out of scope for the generator CLI.
 
-Local foundation smoke test:
+Versioning artifacts in generated code: `GENERATOR_ARTIFACT_VERSION`, `SPEC_FINGERPRINT`, etc. — regenerate when upgrading `stellarmcp` or changing the contract interface.
 
-```bash
-npm run smoke:phase1
-```
+---
 
-Autonomy policy smoke test without real keys or network writes:
+## Troubleshooting
 
-```bash
-npm run smoke:autonomy:mock
-```
 
-Live Tier-1 smoke test on testnet with ephemeral, Friendbot-funded accounts (uses no personal environment secrets):
+| Issue                      | What to check                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Client cannot start server | `node -v` ≥ 20; `npm run build`; path to `build/src/index.js` is correct.                               |
+| Tools error on Horizon/RPC | `STELLAR_NETWORK` matches intended network; URLs https; hosts allowlisted if custom.                    |
+| Signing / “unsigned only”  | `STELLAR_AUTO_SIGN_POLICY=safe` returns unsigned XDR; add key + policy only if you intend auto-sign.    |
+| HTTP mode                  | `GET /health`; MCP at `POST`/`GET` **`/mcp`** per Streamable HTTP transport; see MCP Logs in Cursor.   |
+| Meta cache                 | Writable `STELLAR_META_CACHE_DIR` or temp dir; `freshness.cacheWriteOk` may be `false` on read-only FS. |
 
-```bash
-npm run smoke:tier1:friendbot
-```
 
-Live Tier-1 smoke test on testnet (performs actual transactions):
+---
 
-```bash
-export STELLAR_SECRET_KEY=S...
-export STELLAR_SMOKE_DESTINATION_PUBLIC_KEY=G...
-export STELLAR_SMOKE_ASSET_CODE=USDC
-export STELLAR_SMOKE_ASSET_ISSUER=G...
-npm run smoke:tier1:testnet
-```
-
-## Development Commands
+## Development & testing
 
 ```bash
-npm run test
 npm run typecheck
-npm run build
+npm run test             # build + unit tests + docs/TOOLS.md drift check
+npm run docs:tools       # regenerate docs/TOOLS.md after changing MCP tools
+npm run verify:phase:c   # full maintainer gate (see package.json)
 ```
+
+**Useful smokes:**
+
+- `npm run smoke:phase1` — config + stdio + HTTP wiring.
+- `npm run smoke:testnet:readonly` — real testnet reads + Soroban via MCP stdio (no secret key).
+- `npm run smoke:tier1:friendbot` — Friendbot-funded flows on testnet.
+
+---
 
 ## Inspired by stellarskills
 
-Knowledge layer powered by [stellarskills](https://github.com/ggoldani/stellarskills), execution layer powered by StellarMCP.
+Knowledge layer: [stellarskills](https://github.com/ggoldani/stellarskills). Execution layer: StellarMCP.
+
+License: **MIT** (see repository).

@@ -19,7 +19,11 @@ function findStellarMcpPackageRoot(): string {
     if (existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
-        if (pkg.name === "stellarmcp") {
+        const n = pkg.name ?? "";
+        // Unscoped (dev clone) or scoped publish e.g. @ggoldani/stellarmcp
+        const isStellarMcpRoot =
+          n === "stellarmcp" || /^@[^/]+\/stellarmcp$/.test(n);
+        if (isStellarMcpRoot) {
           return dir;
         }
       } catch {
@@ -33,7 +37,7 @@ function findStellarMcpPackageRoot(): string {
     dir = parent;
   }
   throw new Error(
-    "Could not locate stellarmcp package.json (walked up from generator). Run from an installed stellarmcp package."
+    "Could not locate @scope/stellarmcp (or stellarmcp) package.json (walked up from generator). Install from npm or run from this repository."
   );
 }
 
