@@ -49,6 +49,7 @@ Fetch the paginated transaction history for a Stellar account.
 | `publicKey` | `string` | yes | Stellar account public key (G...) |
 | `limit` | `integer` | no | Number of records to return (max 200) |
 | `cursor` | `string` | no | Pagination cursor to fetch results after a specific transaction |
+| `includeOperations` | `boolean` | no | Include per-transaction operation details (type, source). Bounded by limit. Default false for backward compat. |
 
 ### `stellar_set_options`
 
