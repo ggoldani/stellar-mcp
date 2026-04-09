@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, Server } from "node:http";
 
@@ -116,12 +117,14 @@ async function getHealthResponse(config: AppConfig): Promise<HealthResponse> {
   };
 }
 
+interface McpSession {
+  server: ReturnType<typeof createServer>;
+  transport: StreamableHTTPServerTransport;
+  createdAt: number;
+}
+
 export async function startHttpServer(config: AppConfig): Promise<Server> {
-  const mcpServer = createServer(config);
-  const mcpTransport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined
-  });
-  await mcpServer.connect(mcpTransport);
+  const sessions = new Map<string, McpSession>();
 
   const requestHistory = new Map<string, number[]>();
   let activeRequests = 0;
@@ -216,8 +219,60 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
 
       activeRequests += 1;
       try {
-        await mcpTransport.handleRequest(req, res);
+        const sessionIdHeader = req.headers["mcp-session-id"];
+        const sessionId = typeof sessionIdHeader === "string" ? sessionIdHeader : undefined;
+
+        // Reject DELETE without session-id early.
+        if (req.method === "DELETE" && !sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "DELETE requires mcp-session-id header" }));
+          return;
+        }
+
+        // Lazy session TTL cleanup (30 minutes).
+        const SESSION_TTL_MS = 30 * 60 * 1000;
+        const now = Date.now();
+        for (const [sid, session] of sessions) {
+          if (now - session.createdAt > SESSION_TTL_MS) {
+            try { session.transport.close(); } catch {}
+            try { session.server.close(); } catch {}
+            sessions.delete(sid);
+          }
+        }
+
+        // Determine which transport to use based on session header.
+
+        if (sessionId && sessions.has(sessionId)) {
+          // Resume existing session.
+          const session = sessions.get(sessionId)!;
+          await session.transport.handleRequest(req, res);
+        } else if (sessionId) {
+          // Unknown session ID — 404.
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "Session not found" }));
+        } else {
+          // New session: create fresh server + transport per session.
+          const mcpServer = createServer(config);
+          const mcpTransport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (sid) => {
+              sessions.set(sid, { server: mcpServer, transport: mcpTransport, createdAt: Date.now() });
+            },
+            onsessionclosed: (sid) => {
+              const session = sessions.get(sid);
+              if (session) {
+                try { session.transport.close(); } catch {}
+                try { session.server.close(); } catch {}
+              }
+              sessions.delete(sid);
+            }
+          });
+          await mcpServer.connect(mcpTransport);
+          await mcpTransport.handleRequest(req, res);
+        }
       } catch (error) {
+        // mcpTransport/server may have been created but not registered (connect failure)
+        // No explicit cleanup needed — they'll be GC'd since nothing holds a ref.
         const mapped =
           error instanceof NetworkError || error instanceof StellarProtocolError
             ? error
