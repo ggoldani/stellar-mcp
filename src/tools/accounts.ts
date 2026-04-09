@@ -2,6 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Keypair, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { z } from "zod";
 
+type OperationRecord = {
+  id: string;
+  type: string;
+  type_i: number;
+  created_at: string;
+  source_account: string;
+  transaction_successful: boolean;
+};
+
 import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { createStellarClients } from "../lib/stellar.js";
@@ -33,6 +42,29 @@ export function calculateMinimumBalance(
  *   }
  * }
  */
+async function fetchOperationsForTransactions(
+  stellar: ReturnType<typeof createStellarClients>,
+  txHashes: string[],
+): Promise<Map<string, OperationRecord[]>> {
+  const opsMap = new Map<string, OperationRecord[]>();
+
+  await Promise.all(
+    txHashes.map(async (hash) => {
+      try {
+        const opsPage = await stellar.runHorizon(
+          stellar.horizon.operations().forTransaction(hash).limit(100).call(),
+          "load_operations_for_tx"
+        );
+        opsMap.set(hash, opsPage.records);
+      } catch {
+        opsMap.set(hash, []);
+      }
+    })
+  );
+
+  return opsMap;
+}
+
 export function registerAccountTools(server: McpServer, config: AppConfig): void {
   server.tool(
     "stellar_get_account_history",
@@ -40,9 +72,12 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
     {
       publicKey: publicKeySchema.describe("Stellar account public key (G...)"),
       limit: z.number().int().min(1).max(200).default(10).describe("Number of records to return (max 200)"),
-      cursor: z.string().optional().describe("Pagination cursor to fetch results after a specific transaction")
+      cursor: z.string().optional().describe("Pagination cursor to fetch results after a specific transaction"),
+      includeOperations: z.boolean().default(false).describe(
+        "Include per-transaction operation details (type, source). Bounded by limit. Default false for backward compat."
+      ),
     },
-    async ({ publicKey, limit, cursor }) => {
+    async ({ publicKey, limit, cursor, includeOperations }) => {
       try {
         const validatedPublicKey = publicKeySchema.parse(publicKey);
         const stellar = createStellarClients(config);
@@ -58,6 +93,13 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
           "load_account_history"
         );
 
+        let opsMap: Map<string, OperationRecord[]> | null = null;
+
+        if (includeOperations) {
+          const txHashes = page.records.map(r => r.hash);
+          opsMap = await fetchOperationsForTransactions(stellar, txHashes);
+        }
+
         const response = {
           records: page.records.map(r => ({
             id: r.id,
@@ -69,7 +111,19 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
             successful: r.successful,
             operationCount: r.operation_count,
             memo: r.memo,
-            memoType: r.memo_type
+            memoType: r.memo_type,
+            ...(opsMap?.get(r.hash)
+              ? {
+                  operations: opsMap.get(r.hash)!.map(op => ({
+                    id: op.id,
+                    type: op.type,
+                    typeI: op.type_i,
+                    createdAt: op.created_at,
+                    sourceAccount: op.source_account,
+                    transactionSuccessful: op.transaction_successful,
+                  })),
+                }
+              : {}),
           })),
           nextCursor: page.records.length > 0 ? page.records[page.records.length - 1].paging_token : null,
           ...(config.network === "testnet"
