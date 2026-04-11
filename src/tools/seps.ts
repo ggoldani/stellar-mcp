@@ -10,7 +10,7 @@ import { amountSchema, publicKeySchema, secretKeySchema } from "../lib/validate.
 
 const sep10InputSchema = {
   anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
-  publicKey: z.string().describe("Account public key that will authenticate.")
+  publicKey: publicKeySchema.describe("Account public key that will authenticate.")
 };
 
 const sep38InputSchema = {

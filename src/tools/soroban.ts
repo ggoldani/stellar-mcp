@@ -17,13 +17,14 @@ import * as fs from "node:fs";
 
 import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
+import { contractIdSchema, publicKeySchema } from "../lib/validate.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
 
 const invokeSorobanSchema = {
-  contractId: z.string().describe("Soroban contract ID (C...)"),
+  contractId: contractIdSchema.describe("Soroban contract ID (C...)"),
   method: z.string().describe("Contract method name to invoke"),
-  sourceAccount: z.string().describe("Source account public key (G...) to use for simulation."),
+  sourceAccount: publicKeySchema.describe("Source account public key (G...) to use for simulation."),
   args: z
     .array(
       z.object({
@@ -291,7 +292,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
     "Fetch historical events emitted by a Soroban smart contract.",
     {
       startLedger: z.number().int().describe("The ledger sequence number to start fetching events from"),
-      contractIds: z.array(z.string()).optional().describe("Array of contract IDs (C...) to filter by"),
+      contractIds: z.array(contractIdSchema).optional().describe("Array of contract IDs (C...) to filter by"),
       topics: z.array(z.string()).optional().describe("Array of topic strings (e.g. 'transfer', '*') to filter by"),
       limit: z.number().int().min(1).max(100).default(100).describe("Maximum number of events to return")
     },
@@ -358,7 +359,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
     "Upload WASM and deploy a Soroban smart contract instance. Returns wasmHash, contractId, and transaction hashes.",
     {
       wasmFilePath: z.string().describe("Absolute or relative path to the compiled .wasm file"),
-      sourceAccount: z.string().describe("Source account public key (G...) to deploy from"),
+      sourceAccount: publicKeySchema.describe("Source account public key (G...) to deploy from"),
       salt: z.string().optional().describe("32-byte hex salt for deterministic contract ID. Random if omitted.")
     },
     async ({ wasmFilePath, sourceAccount, salt }) => {
@@ -574,7 +575,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
     "stellar_soroban_read_state",
     "Read the state of a specific contract data entry directly from the ledger without simulating a transaction.",
     {
-      contractId: z.string().describe("Soroban contract ID (C...)"),
+      contractId: contractIdSchema.describe("Soroban contract ID (C...)"),
       keyType: z.enum([
         "u32", "i32", "u64", "i64", "u128", "i128", "u256", "i256", "string", "symbol", "address", "bool"
       ]).describe("The ScVal type of the ledger key"),
