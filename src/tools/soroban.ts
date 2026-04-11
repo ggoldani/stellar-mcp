@@ -1,10 +1,12 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   Account,
+  Address,
   Contract,
   Keypair,
   Networks,
   Operation,
+  StrKey,
   TransactionBuilder,
   rpc,
   xdr,
@@ -67,6 +69,46 @@ function parseArgToScVal(type: string, value: any): xdr.ScVal {
     default:
       throw new Error(`Unsupported argument type: ${type}`);
   }
+}
+
+async function waitForTransactionAndExtractValue(
+  rpcServer: rpc.Server,
+  txHash: string,
+  label: string,
+): Promise<{ type: "bytes"; value: Buffer } | { type: "address"; value: xdr.ScAddress }> {
+  const POLL_INTERVAL_MS = 1000;
+  const MAX_POLLS = 30; // 30 seconds
+
+  for (let i = 0; i < MAX_POLLS; i++) {
+    const txResponse = await rpcServer.getTransaction(txHash);
+
+    if (txResponse.status === rpc.Api.GetTransactionStatus.SUCCESS) {
+      if (!txResponse.returnValue) {
+        throw new Error(`${label}: transaction succeeded but has no returnValue`);
+      }
+      const scVal = txResponse.returnValue;
+      const switchName = scVal.switch().name as string;
+
+      if (switchName === "scvBytes") {
+        return { type: "bytes", value: Buffer.from(scVal.bytes()) };
+      }
+
+      if (switchName === "scvAddress") {
+        return { type: "address", value: scVal.address() as xdr.ScAddress };
+      }
+
+      throw new Error(`${label}: unexpected returnValue type: ${switchName}`);
+    }
+
+    if (txResponse.status === rpc.Api.GetTransactionStatus.FAILED) {
+      throw new Error(`${label}: transaction failed (hash: ${txHash})`);
+    }
+
+    // NOT_FOUND — keep polling
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+
+  throw new Error(`${label}: timed out waiting for transaction ${txHash}`);
 }
 
 export function registerSorobanTools(server: McpServer, config: AppConfig): void {
@@ -313,55 +355,55 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
 
   server.tool(
     "stellar_soroban_deploy",
-    "Upload and deploy a Soroban smart contract from a local .wasm file. Submits to the network if policy allows.",
+    "Upload WASM and deploy a Soroban smart contract instance. Returns wasmHash, contractId, and transaction hashes.",
     {
       wasmFilePath: z.string().describe("Absolute or relative path to the compiled .wasm file"),
-      sourceAccount: z.string().describe("Source account public key (G...) to deploy from")
+      sourceAccount: z.string().describe("Source account public key (G...) to deploy from"),
+      salt: z.string().optional().describe("32-byte hex salt for deterministic contract ID. Random if omitted.")
     },
-    async ({ wasmFilePath, sourceAccount }) => {
+    async ({ wasmFilePath, sourceAccount, salt }) => {
       try {
         if (!fs.existsSync(wasmFilePath)) {
           throw new Error(`WASM file not found at path: ${wasmFilePath}`);
         }
 
         const wasmBuffer = fs.readFileSync(wasmFilePath);
-
         const stellar = createStellarClients(config);
-
-        const account = await stellar.runHorizon(
-          stellar.horizon.loadAccount(sourceAccount),
-          "load_source_account"
-        );
-
-        const builder = new TransactionBuilder(account, {
-          fee: "100",
-          networkPassphrase: stellar.networkPassphrase
-        });
-
-        builder.addOperation(Operation.uploadContractWasm({ wasm: wasmBuffer }));
-        builder.setTimeout(30);
-
-        const tx = builder.build();
-
-        const simulation = await stellar.runRpc(
-          stellar.rpc.simulateTransaction(tx),
-          "simulate_upload"
-        );
-
-        if (rpc.Api.isSimulationError(simulation)) {
-          throw new Error(`Simulation failed: ${simulation.error}`);
-        }
-
-        const preparedTxBuilder = rpc.assembleTransaction(tx, simulation);
-        const preparedTx = preparedTxBuilder.build();
 
         const isUnsignedMode =
           config.autoSignPolicy === "safe" ||
           (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
           (!config.autoSignPolicy && !config.autoSign);
 
+        // --- Step 1: Upload WASM ---
+        const uploadAccount = await stellar.runHorizon(
+          stellar.horizon.loadAccount(sourceAccount),
+          "load_source_account_upload"
+        );
+
+        const uploadBuilder = new TransactionBuilder(uploadAccount, {
+          fee: "100",
+          networkPassphrase: stellar.networkPassphrase
+        });
+
+        uploadBuilder.addOperation(Operation.uploadContractWasm({ wasm: wasmBuffer }));
+        uploadBuilder.setTimeout(30);
+
+        const uploadTx = uploadBuilder.build();
+
+        const uploadSim = await stellar.runRpc(
+          stellar.rpc.simulateTransaction(uploadTx),
+          "simulate_upload"
+        );
+
+        if (rpc.Api.isSimulationError(uploadSim)) {
+          throw new Error(`Upload simulation failed: ${uploadSim.error}`);
+        }
+
+        const preparedUploadTx = rpc.assembleTransaction(uploadTx, uploadSim).build();
+
         if (!isUnsignedMode && config.secretKey) {
-          preparedTx.sign(Keypair.fromSecret(config.secretKey));
+          preparedUploadTx.sign(Keypair.fromSecret(config.secretKey));
         }
 
         if (isUnsignedMode || !config.secretKey) {
@@ -370,29 +412,146 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
               {
                 type: "text",
                 text: JSON.stringify({
-                  status: "unsigned",
+                  status: "unsigned_upload",
                   message:
-                    "Transaction requires signatures. Please sign this assembled XDR.",
-                  unsignedXdr: preparedTx.toXDR()
+                    "Upload transaction requires signatures. Sign and submit, then call this tool again or use stellar_soroban_deploy with the wasmHash.",
+                  unsignedXdr: preparedUploadTx.toXDR()
                 }, null, 2)
               }
             ]
           };
         }
 
-        const submission = await stellar.runRpc(
-          stellar.rpc.sendTransaction(preparedTx),
+        const uploadResult = await stellar.runRpc(
+          stellar.rpc.sendTransaction(preparedUploadTx),
           "submit_soroban_upload"
         );
+
+        if (uploadResult.errorResult) {
+          throw new Error(
+            `Upload submission failed: ${uploadResult.errorResult}`
+          );
+        }
+
+        // Wait for upload confirmation and extract wasmHash
+        const uploadTxHash = uploadResult.hash;
+        const uploadValue = await waitForTransactionAndExtractValue(
+          stellar.rpc,
+          uploadTxHash,
+          "upload"
+        );
+
+        if (uploadValue.type !== "bytes") {
+          throw new Error("upload: expected bytes returnValue (wasm hash)");
+        }
+        const wasmHash = uploadValue.value;
+
+        // --- Step 2: Create contract instance ---
+        const deployAccount = await stellar.runHorizon(
+          stellar.horizon.loadAccount(sourceAccount),
+          "load_source_account_deploy"
+        );
+
+        const saltBuffer = salt
+          ? Buffer.from(salt, "hex")
+          : crypto.getRandomValues(new Uint8Array(32));
+
+        if (saltBuffer.length !== 32) {
+          throw new Error(`Salt must be 32 bytes (64 hex chars), got ${saltBuffer.length} bytes`);
+        }
+
+        const deployBuilder = new TransactionBuilder(deployAccount, {
+          fee: "100",
+          networkPassphrase: stellar.networkPassphrase
+        });
+
+        deployBuilder.addOperation(
+          Operation.createCustomContract({
+            wasmHash: Buffer.from(wasmHash),
+            address: Address.account(StrKey.decodeEd25519PublicKey(sourceAccount)),
+            salt: saltBuffer
+          })
+        );
+        deployBuilder.setTimeout(30);
+
+        const deployTx = deployBuilder.build();
+
+        const deploySim = await stellar.runRpc(
+          stellar.rpc.simulateTransaction(deployTx),
+          "simulate_deploy"
+        );
+
+        if (rpc.Api.isSimulationError(deploySim)) {
+          throw new Error(`Deploy simulation failed: ${deploySim.error}`);
+        }
+
+        const preparedDeployTx = rpc.assembleTransaction(deployTx, deploySim).build();
+
+        if (!isUnsignedMode && config.secretKey) {
+          preparedDeployTx.sign(Keypair.fromSecret(config.secretKey));
+        }
+
+        if (isUnsignedMode || !config.secretKey) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned_deploy",
+                  message:
+                    "Deploy transaction requires signatures. Sign and submit to create the contract instance.",
+                  uploadHash: uploadTxHash,
+                  unsignedDeployXdr: preparedDeployTx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        const deployResult = await stellar.runRpc(
+          stellar.rpc.sendTransaction(preparedDeployTx),
+          "submit_soroban_deploy"
+        );
+
+        if (deployResult.errorResult) {
+          throw new Error(
+            `Deploy submission failed: ${deployResult.errorResult}`
+          );
+        }
+
+        // Wait for deploy confirmation and extract contractId
+        const deployTxHash = deployResult.hash;
+        const deployValue = await waitForTransactionAndExtractValue(
+          stellar.rpc,
+          deployTxHash,
+          "deploy"
+        );
+
+        if (deployValue.type !== "address") {
+          throw new Error("deploy: expected address returnValue (contract ID)");
+        }
+
+        const contractId = StrKey.encodeContract(
+          Address.fromScAddress(deployValue.value).toBuffer()
+        );
+
+        const wasmHashHex = wasmHash.toString("hex");
+        const saltHex = Buffer.from(saltBuffer).toString("hex");
 
         return {
           content: [
             {
               type: "text",
               text: JSON.stringify({
-                status: submission.status,
-                hash: submission.hash,
-                errorResultXdr: submission.errorResult?.toXDR("base64") || null,
+                status: "success",
+                uploadHash: uploadTxHash,
+                deployHash: deployTxHash,
+                contractId,
+                wasmHash: wasmHashHex,
+                salt: saltHex,
+                ...(config.network === "testnet"
+                  ? { dryRunWarning: "Network is testnet." }
+                  : {}),
                 _debug: sanitizeDebugPayload({
                   wasmFilePath,
                   networkPassphrase: stellar.networkPassphrase

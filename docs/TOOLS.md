@@ -329,14 +329,26 @@ Initiate a SEP-6 programmatic deposit or withdrawal.
 
 ### `stellar_soroban_deploy`
 
-Upload and deploy a Soroban smart contract from a local .wasm file. Submits to the network if policy allows.
+Upload WASM and deploy a Soroban smart contract instance. Performs two transactions: (1) install the WASM binary, (2) create the contract instance. Returns the contract ID on success.
 
 **Parameters** (JSON Schema → table)
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `wasmFilePath` | `string` | yes | Absolute or relative path to the compiled .wasm file |
-| `sourceAccount` | `string` | yes | Source account public key (G...) to deploy from |
+| `sourceAccount` | `string` | yes | Source account public key (G...) to deploy from (also used as deployer address) |
+| `salt` | `string` | no | 32-byte hex string for deterministic contract ID. Random if omitted. |
+
+**Response fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `string` | `success`, `unsigned_upload`, or `unsigned_deploy` |
+| `uploadHash` | `string` | Transaction hash of the WASM upload step |
+| `deployHash` | `string` | Transaction hash of the contract creation step |
+| `contractId` | `string` | Contract ID (C...) — only on `success` |
+| `wasmHash` | `string` | 64-char hex hash of the installed WASM binary |
+| `salt` | `string` | 64-char hex salt used for contract creation |
 
 ### `stellar_soroban_get_events`
 
