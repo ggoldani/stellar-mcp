@@ -15,6 +15,13 @@ export const secretKeySchema = z
     message: "Invalid Stellar secret key (expected S... seed)."
   });
 
+export const contractIdSchema = z
+  .string()
+  .trim()
+  .refine((value) => StrKey.isValidContract(value), {
+    message: "Invalid Stellar contract ID (expected C... address)."
+  });
+
 export const amountSchema = z
   .string()
   .trim()
