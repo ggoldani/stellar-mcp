@@ -79,7 +79,17 @@ export function formatXdrJsonToolError(
 }
 
 function normalizeEncodeJsonInput(value: string | Record<string, unknown>): string {
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value !== "string") {
+    return JSON.stringify(value);
+  }
+  // Auto-wrap raw strings that are not valid JSON (e.g. a Stellar public key "G...")
+  // so that the underlying JSON.parse inside the XDR engine can consume them.
+  try {
+    JSON.parse(value);
+    return value;
+  } catch {
+    return JSON.stringify(value);
+  }
 }
 
 /**
