@@ -50,7 +50,7 @@
     "prepack": "node scripts/prepack-build.mjs",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test build/tests/*.test.js",
+    "test": "npm run test:unit",
     "verify:base": "npm run typecheck && npm run test",
     "verify:phase:a": "npm run verify:base && npm run smoke:phase1",
     "verify:phase:b": "npm run verify:base && npm run smoke:phase1 && npm run smoke:autonomy:mock",
@@ -65,7 +65,10 @@
     "smoke:autonomy:mock": "node build/tests/smoke-autonomy-mock.js",
     "smoke:tier1:friendbot": "node build/tests/smoke-tier1-friendbot.js",
     "smoke:tier1:testnet": "node build/tests/smoke-tier1-testnet.js",
-    "smoke:testnet:readonly": "npm run build && node build/tests/smoke-testnet-readonly.js"
+    "smoke:testnet:readonly": "npm run build && node build/tests/smoke-testnet-readonly.js",
+    "test:unit": "npm run build && node --test build/tests/accounts.test.js build/tests/assets.test.js build/tests/autonomy.test.js build/tests/config.test.js build/tests/errors.test.js build/tests/generator.test.js build/tests/http-lib.test.js build/tests/http-transport.test.js build/tests/meta.test.js build/tests/network.test.js build/tests/payments.test.js build/tests/redact.test.js build/tests/seps.test.js build/tests/stellar.test.js build/tests/tools-md-drift.test.js build/tests/validate.test.js build/tests/valuation.test.js build/tests/xdr.test.js",
+    "test:integration": "npm run build && node --test build/tests/integration-*.test.js",
+    "test:all": "npm run test:unit && npm run test:integration"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

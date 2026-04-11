@@ -418,7 +418,7 @@ async function loadTxBlob(
       "records" in pageOrRecord && Array.isArray(pageOrRecord.records)
         ? pageOrRecord.records[0]
         : pageOrRecord;
-    if (!tx || typeof tx !== "object" || !("result_meta_xdr" in tx)) {
+    if (!tx || typeof tx !== "object") {
       throw new Error(`Horizon returned no transaction record for hash ${hash}.`);
     }
     return {
