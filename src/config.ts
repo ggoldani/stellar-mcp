@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { z } from "zod";
-import { Networks } from "@stellar/stellar-sdk";
+import { Keypair, Networks } from "@stellar/stellar-sdk";
 
 import type { AutoSignPolicy, RuntimeTransport, StellarNetwork } from "./types.js";
 
@@ -56,6 +56,7 @@ export interface AppConfig {
   rpcUrl?: string;
   sep38Url?: string;
   secretKey?: string;
+  validatedKeypair?: Keypair;
   autoSignPolicy: AutoSignPolicy;
   autoSign: boolean;
   autoSignLimit: number;
@@ -244,6 +245,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     rpcUrl,
     sep38Url,
     secretKey: parsed.STELLAR_SECRET_KEY,
+    validatedKeypair: parsed.STELLAR_SECRET_KEY
+      ? Keypair.fromSecret(parsed.STELLAR_SECRET_KEY)
+      : undefined,
     autoSignPolicy: autoSignRuntime.autoSignPolicy,
     autoSign: autoSignRuntime.autoSign,
     autoSignLimit: autoSignRuntime.autoSignLimit,

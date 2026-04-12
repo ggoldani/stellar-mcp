@@ -17,7 +17,7 @@ import * as fs from "node:fs";
 
 import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
-import { contractIdSchema, publicKeySchema } from "../lib/validate.js";
+import { contractIdSchema, publicKeySchema, assertSourceKeyMatch, safePathSchema } from "../lib/validate.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
 
@@ -194,6 +194,11 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
       try {
         const stellar = createStellarClients(config);
 
+        // Fail fast if source key does not match (before any network calls)
+        if (config.secretKey) {
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_soroban_invoke");
+        }
+
         const contract = new Contract(contractId);
 
         let scArgs: xdr.ScVal[] = [];
@@ -236,7 +241,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
           (!config.autoSignPolicy && !config.autoSign);
 
         if (!isUnsignedMode && config.secretKey) {
-          preparedTx.sign(Keypair.fromSecret(config.secretKey));
+          preparedTx.sign(config.validatedKeypair!);
         }
 
         if (isUnsignedMode || !config.secretKey) {
@@ -358,7 +363,7 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
     "stellar_soroban_deploy",
     "Upload WASM and deploy a Soroban smart contract instance. Returns wasmHash, contractId, and transaction hashes.",
     {
-      wasmFilePath: z.string().describe("Absolute or relative path to the compiled .wasm file"),
+      wasmFilePath: safePathSchema.describe("Absolute or relative path to the compiled .wasm file"),
       sourceAccount: publicKeySchema.describe("Source account public key (G...) to deploy from"),
       salt: z.string().optional().describe("32-byte hex salt for deterministic contract ID. Random if omitted.")
     },
@@ -404,7 +409,8 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
         const preparedUploadTx = rpc.assembleTransaction(uploadTx, uploadSim).build();
 
         if (!isUnsignedMode && config.secretKey) {
-          preparedUploadTx.sign(Keypair.fromSecret(config.secretKey));
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_soroban_deploy (upload)");
+          preparedUploadTx.sign(config.validatedKeypair!);
         }
 
         if (isUnsignedMode || !config.secretKey) {
@@ -489,7 +495,8 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
         const preparedDeployTx = rpc.assembleTransaction(deployTx, deploySim).build();
 
         if (!isUnsignedMode && config.secretKey) {
-          preparedDeployTx.sign(Keypair.fromSecret(config.secretKey));
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_soroban_deploy (deploy)");
+          preparedDeployTx.sign(config.validatedKeypair!);
         }
 
         if (isUnsignedMode || !config.secretKey) {

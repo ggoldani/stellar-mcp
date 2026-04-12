@@ -7,7 +7,7 @@ import { decideSigningPolicy } from "../lib/autonomy.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { createStellarClients } from "../lib/stellar.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
-import { amountSchema, assetInputSchema, publicKeySchema, secretKeySchema } from "../lib/validate.js";
+import { amountSchema, assetInputSchema, publicKeySchema, secretKeySchema, assertSourceKeyMatch } from "../lib/validate.js";
 
 const createTrustlineInputSchema = {
   account: z.string().describe("Account public key that will hold the trustline."),
@@ -122,7 +122,7 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
             "Trustline transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
           );
         }
-        const signer = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
+        const signer = config.validatedKeypair!;
         if (signer.publicKey() !== validatedAccount) {
           throw new Error(
             "Account mismatch: `account` does not match STELLAR_SECRET_KEY public key."
@@ -216,10 +216,11 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
           assetB.type === "native" ? undefined : assetB.issuer
         );
 
-        const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
+        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
+        const liquidityPoolId = getLiquidityPoolId("constant_product", { assetA: assetObjA, assetB: assetObjB, fee }).toString("hex");
 
         builder.addOperation(
-          (Operation as any).depositLiquidity({
+          Operation.liquidityPoolDeposit({
             liquidityPoolId,
             maxAmountA,
             maxAmountB,
@@ -231,16 +232,12 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
 
         const tx = builder.build();
 
-        const isUnsignedMode =
+        // Safe policy always returns unsigned
+        const isSafeUnsigned =
           config.autoSignPolicy === "safe" ||
-          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
-          (!config.autoSignPolicy && !config.autoSign);
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0);
 
-        if (!isUnsignedMode && config.secretKey) {
-          tx.sign(Keypair.fromSecret(config.secretKey));
-        }
-
-        if (isUnsignedMode || !config.secretKey) {
+        if (isSafeUnsigned || !config.autoSign) {
           return {
             content: [
               {
@@ -249,6 +246,49 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
                   status: "unsigned",
                   message:
                     "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        // For guarded/expert with limit, route through policy engine
+        if (config.autoSignLimit > 0) {
+          const signingDecision = decideSigningPolicy({
+            autoSign: config.autoSign,
+            autoSignLimit: config.autoSignLimit,
+            valueUsdc: undefined // AMM ops have no reliable USDC valuation
+          });
+
+          if (!signingDecision.shouldSign) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    status: "unsigned",
+                    message: signingDecision.message || "Transaction requires signatures.",
+                    unsignedXdr: tx.toXDR()
+                  }, null, 2)
+                }
+              ]
+            };
+          }
+        }
+
+        // Auto-sign enabled (guarded with limit met or expert)
+        if (config.secretKey) {
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_deposit_liquidity");
+          tx.sign(config.validatedKeypair!);
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message: "Transaction requires signatures.",
                   unsignedXdr: tx.toXDR()
                 }, null, 2)
               }
@@ -329,10 +369,11 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
           assetB.type === "native" ? undefined : assetB.issuer
         );
 
-        const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
+        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
+        const liquidityPoolId = getLiquidityPoolId("constant_product", { assetA: assetObjA, assetB: assetObjB, fee }).toString("hex");
 
         builder.addOperation(
-          (Operation as any).withdrawLiquidity({
+          Operation.liquidityPoolWithdraw({
             liquidityPoolId,
             amount,
             minAmountA,
@@ -343,16 +384,12 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
 
         const tx = builder.build();
 
-        const isUnsignedMode =
+        // Safe policy always returns unsigned
+        const isSafeUnsigned =
           config.autoSignPolicy === "safe" ||
-          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0) ||
-          (!config.autoSignPolicy && !config.autoSign);
+          (config.autoSignPolicy === "guarded" && config.autoSignLimit === 0);
 
-        if (!isUnsignedMode && config.secretKey) {
-          tx.sign(Keypair.fromSecret(config.secretKey));
-        }
-
-        if (isUnsignedMode || !config.secretKey) {
+        if (isSafeUnsigned || !config.autoSign) {
           return {
             content: [
               {
@@ -361,6 +398,49 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
                   status: "unsigned",
                   message:
                     "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
+        }
+
+        // For guarded/expert with limit, route through policy engine
+        if (config.autoSignLimit > 0) {
+          const signingDecision = decideSigningPolicy({
+            autoSign: config.autoSign,
+            autoSignLimit: config.autoSignLimit,
+            valueUsdc: undefined // AMM ops have no reliable USDC valuation
+          });
+
+          if (!signingDecision.shouldSign) {
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    status: "unsigned",
+                    message: signingDecision.message || "Transaction requires signatures.",
+                    unsignedXdr: tx.toXDR()
+                  }, null, 2)
+                }
+              ]
+            };
+          }
+        }
+
+        // Auto-sign enabled (guarded with limit met or expert)
+        if (config.secretKey) {
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_withdraw_liquidity");
+          tx.sign(config.validatedKeypair!);
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message: "Transaction requires signatures.",
                   unsignedXdr: tx.toXDR()
                 }, null, 2)
               }
