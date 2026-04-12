@@ -241,6 +241,11 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
       try {
         const stellar = createStellarClients(config);
 
+        // Fail fast if fee account key doesn't match (before any I/O)
+        if (config.secretKey) {
+          assertSourceKeyMatch(config.validatedKeypair!, feeAccount, "stellar_submit_fee_bump_transaction");
+        }
+
         const innerTx = new Transaction(innerTxXdr, stellar.networkPassphrase);
 
         const feeBumpTxOpts: any = {
@@ -271,7 +276,6 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
           (!config.autoSignPolicy && !config.autoSign);
 
         if (!isUnsignedMode && config.secretKey) {
-          assertSourceKeyMatch(config.validatedKeypair!, feeAccount, "stellar_submit_fee_bump_transaction");
           feeBumpTx.sign(config.validatedKeypair!);
         }
 
