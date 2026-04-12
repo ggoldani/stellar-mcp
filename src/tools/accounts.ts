@@ -309,6 +309,12 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
     }) => {
       try {
         const stellar = createStellarClients(config);
+
+        // Fail fast if source key does not match (before any network calls)
+        if (config.secretKey) {
+          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_set_options");
+        }
+
         const account = await stellar.runHorizon(
           stellar.horizon.loadAccount(sourceAccount),
           "load_source_account"
@@ -338,7 +344,6 @@ export function registerAccountTools(server: McpServer, config: AppConfig): void
           (!config.autoSignPolicy && !config.autoSign);
 
         if (!isUnsignedMode && config.secretKey) {
-          assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_set_options");
           tx.sign(config.validatedKeypair!);
         }
 
