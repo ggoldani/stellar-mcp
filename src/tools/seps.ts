@@ -6,7 +6,7 @@ import type { AppConfig } from "../config.js";
 import { normalizeStellarError } from "../lib/errors.js";
 import { fetchJsonWithTimeout, fetchTextWithTimeout } from "../lib/http.js";
 import { redactSensitiveText, sanitizeDebugPayload } from "../lib/redact.js";
-import { amountSchema, publicKeySchema, secretKeySchema } from "../lib/validate.js";
+import { amountSchema, publicKeySchema, secretKeySchema, validateDiscoveredEndpoint } from "../lib/validate.js";
 
 const sep10InputSchema = {
   anchorDomain: z.string().describe("Anchor domain, e.g. anchor.example.com"),
@@ -160,7 +160,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             "SEP-10 signing is unavailable: STELLAR_SECRET_KEY is not configured."
           );
         }
-        const signer = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
+        const signer = config.validatedKeypair!;
         if (signer.publicKey() !== validatedPublicKey) {
           throw new Error(
             "Public key mismatch: `publicKey` does not match STELLAR_SECRET_KEY public key."
@@ -266,6 +266,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             `SEP-6 discovery failed: TRANSFER_SERVER not found in stellar.toml of ${normalizedDomain}.`
           );
         }
+        validateDiscoveredEndpoint("TRANSFER_SERVER", transferServer);
 
         const endpointUrl = new URL(
           `${transferServer.replace(/\/$/, "")}/${type}`
@@ -334,6 +335,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             `SEP-12 discovery failed: KYC_SERVER not found in stellar.toml of ${normalizedDomain}.`
           );
         }
+        validateDiscoveredEndpoint("KYC_SERVER", kycServer);
 
         const endpointUrl = new URL(
           `${kycServer.replace(/\/$/, "")}/customer`
@@ -430,6 +432,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             `SEP-31 discovery failed: DIRECT_PAYMENT_SERVER not found in stellar.toml of ${normalizedDomain}.`
           );
         }
+        validateDiscoveredEndpoint("DIRECT_PAYMENT_SERVER", directPaymentServer);
 
         const endpointUrl = new URL(
           `${directPaymentServer.replace(/\/$/, "")}/transactions`
@@ -508,6 +511,7 @@ export function registerSepTools(server: McpServer, config: AppConfig): void {
             `SEP-24 discovery failed: TRANSFER_SERVER_SEP0024 not found in stellar.toml of ${normalizedDomain}.`
           );
         }
+        validateDiscoveredEndpoint("TRANSFER_SERVER_SEP0024", transferServerSep24);
 
         const endpointUrl = new URL(
           `${transferServerSep24.replace(/\/$/, "")}/transactions/${type}/interactive`

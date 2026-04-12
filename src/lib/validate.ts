@@ -1,4 +1,4 @@
-import { StrKey } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { z } from "zod";
 
 export const publicKeySchema = z
@@ -21,6 +21,59 @@ export const contractIdSchema = z
   .refine((value) => StrKey.isValidContract(value), {
     message: "Invalid Stellar contract ID (expected C... address)."
   });
+
+export const safePathSchema = z
+  .string()
+  .describe("File path to a compiled .wasm file")
+  .refine((path) => {
+    const normalized = path.replace(/\\/g, "/");
+    if (normalized.includes("..")) return false;
+    const restrictedPrefixes = ["/etc/", "/proc/", "/sys/", "/dev/", "/root/", "/boot/", "/var/log/", "/run/"];
+    return !restrictedPrefixes.some((prefix) => normalized.startsWith(prefix));
+  }, {
+    message: "File path contains forbidden traversal patterns or targets a restricted system directory."
+  });
+
+export function assertSourceKeyMatch(
+  keypair: Keypair,
+  sourceAccount: string,
+  toolName: string
+): void {
+  if (keypair.publicKey() !== sourceAccount) {
+    throw new Error(
+      `${toolName}: source account does not match STELLAR_SECRET_KEY public key.`
+    );
+  }
+}
+
+export function isUnsafeUrlHost(raw: string): boolean {
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return true;
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname.endsWith(".local")) return true;
+    if (hostname === "::1" || hostname.startsWith("fe80:")) return true;
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+      const octets = hostname.split(".").map(Number);
+      if (octets.length !== 4) return true;
+      const [a, b] = octets;
+      if (a === 10 || a === 127 || (a === 169 && b === 254) ||
+          (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+export function validateDiscoveredEndpoint(key: string, url: string): string {
+  if (isUnsafeUrlHost(url)) {
+    throw new Error(
+      `Discovered ${key} endpoint targets private/local host. Refusing.`
+    );
+  }
+  return url;
+}
 
 export const amountSchema = z
   .string()

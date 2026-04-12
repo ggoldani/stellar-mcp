@@ -22,7 +22,8 @@ import {
   assetInputSchema,
   memoSchema,
   publicKeySchema,
-  secretKeySchema
+  secretKeySchema,
+  assertSourceKeyMatch
 } from "../lib/validate.js";
 
 const submitPaymentInputSchema = {
@@ -182,7 +183,7 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
             "Transaction signing is unavailable: STELLAR_SECRET_KEY is not configured."
           );
         }
-        const sourceKeypair = Keypair.fromSecret(secretKeySchema.parse(config.secretKey));
+        const sourceKeypair = config.validatedKeypair!;
         if (sourceKeypair.publicKey() !== validatedFrom) {
           throw new Error(
             "Source account mismatch: `from` does not match STELLAR_SECRET_KEY public key."
@@ -270,7 +271,8 @@ export function registerPaymentTools(server: McpServer, config: AppConfig): void
           (!config.autoSignPolicy && !config.autoSign);
 
         if (!isUnsignedMode && config.secretKey) {
-          feeBumpTx.sign(Keypair.fromSecret(config.secretKey));
+          assertSourceKeyMatch(config.validatedKeypair!, feeAccount, "stellar_submit_fee_bump_transaction");
+          feeBumpTx.sign(config.validatedKeypair!);
         }
 
         if (isUnsignedMode || !config.secretKey) {
