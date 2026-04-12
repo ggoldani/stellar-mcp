@@ -280,6 +280,19 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         if (config.secretKey) {
           assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_deposit_liquidity");
           tx.sign(config.validatedKeypair!);
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message: "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
         }
 
         const submission = await stellar.runHorizon(
@@ -418,6 +431,19 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
         if (config.secretKey) {
           assertSourceKeyMatch(config.validatedKeypair!, sourceAccount, "stellar_withdraw_liquidity");
           tx.sign(config.validatedKeypair!);
+        } else {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  status: "unsigned",
+                  message: "Transaction requires signatures.",
+                  unsignedXdr: tx.toXDR()
+                }, null, 2)
+              }
+            ]
+          };
         }
 
         const submission = await stellar.runHorizon(
