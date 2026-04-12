@@ -216,10 +216,11 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
           assetB.type === "native" ? undefined : assetB.issuer
         );
 
-        const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
+        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
+        const liquidityPoolId = getLiquidityPoolId("constant_product", { assetA: assetObjA, assetB: assetObjB, fee }).toString("hex");
 
         builder.addOperation(
-          (Operation as any).depositLiquidity({
+          Operation.liquidityPoolDeposit({
             liquidityPoolId,
             maxAmountA,
             maxAmountB,
@@ -368,10 +369,11 @@ export function registerAssetTools(server: McpServer, config: AppConfig): void {
           assetB.type === "native" ? undefined : assetB.issuer
         );
 
-        const liquidityPoolId = require("@stellar/stellar-sdk").getLiquidityPoolId(assetObjA, assetObjB, fee).toString("hex");
+        const { getLiquidityPoolId } = await import("@stellar/stellar-sdk");
+        const liquidityPoolId = getLiquidityPoolId("constant_product", { assetA: assetObjA, assetB: assetObjB, fee }).toString("hex");
 
         builder.addOperation(
-          (Operation as any).withdrawLiquidity({
+          Operation.liquidityPoolWithdraw({
             liquidityPoolId,
             amount,
             minAmountA,
