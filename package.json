@@ -1,6 +1,6 @@
 {
   "name": "@ggoldani/stellarmcp",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Stellar MCP server focused on execution-grade agent tooling.",
   "license": "MIT",
   "type": "module",

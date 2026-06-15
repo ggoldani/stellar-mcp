@@ -8,6 +8,7 @@ test("loadConfig defaults to testnet passphrase and stdio transport", () => {
 
   assert.equal(config.network, "testnet");
   assert.equal(config.transport, "stdio");
+  assert.equal(config.httpBindHost, "127.0.0.1");
   assert.equal(
     config.networkPassphrase,
     "Test SDF Network ; September 2015"
@@ -15,6 +16,12 @@ test("loadConfig defaults to testnet passphrase and stdio transport", () => {
   assert.equal(config.autoSign, false);
   assert.equal(config.autoSignLimit, 0);
   assert.equal(config.autoSignPolicy, "legacy");
+});
+
+test("loadConfig parses MCP_HTTP_BIND_HOST", () => {
+  const config = loadConfig({ MCP_HTTP_BIND_HOST: "0.0.0.0" });
+
+  assert.equal(config.httpBindHost, "0.0.0.0");
 });
 
 test("loadConfig derives mainnet passphrase from STELLAR_NETWORK", () => {
@@ -62,6 +69,17 @@ test("loadConfig rejects IPv6 localhost override", () => {
   );
 });
 
+test("loadConfig rejects IPv6 local and ULA overrides", () => {
+  assert.throws(
+    () =>
+      loadConfig({
+        STELLAR_NETWORK: "testnet",
+        STELLAR_RPC_URL: "https://[fd00::1]:8000"
+      }),
+    /private/i
+  );
+});
+
 test("loadConfig does not classify malformed IPv4 as private host", () => {
   assert.throws(
     () =>
@@ -81,6 +99,18 @@ test("loadConfig allows custom override host when explicitly allowlisted", () =>
   });
 
   assert.equal(config.rpcUrl, "https://custom.stellar-provider.example");
+});
+
+test("loadConfig parses false-like booleans as false", () => {
+  const config = loadConfig({
+    MCP_HTTP_TRUST_PROXY: "false",
+    STELLAR_META_CACHE_ENABLED: "0",
+    STELLAR_AUTO_SIGN: "no"
+  });
+
+  assert.equal(config.httpTrustProxy, false);
+  assert.equal(config.metaCacheEnabled, false);
+  assert.equal(config.autoSign, false);
 });
 
 test("loadConfig parses auto-sign envs", () => {

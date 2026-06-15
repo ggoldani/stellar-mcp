@@ -113,7 +113,7 @@ async function getHealthResponse(config: AppConfig): Promise<HealthResponse> {
     transport: "http-sse",
     horizonReachable,
     rpcReachable,
-    version: "0.1.7"
+    version: "0.1.8"
   };
 }
 
@@ -121,6 +121,13 @@ interface McpSession {
   server: ReturnType<typeof createServer>;
   transport: StreamableHTTPServerTransport;
   createdAt: number;
+}
+
+export function getHttpListenOptions(config: AppConfig): { port: number; host: string } {
+  return {
+    port: config.port,
+    host: config.httpBindHost
+  };
 }
 
 export async function startHttpServer(config: AppConfig): Promise<Server> {
@@ -292,7 +299,7 @@ export async function startHttpServer(config: AppConfig): Promise<Server> {
   });
 
   await new Promise<void>((resolve) => {
-    server.listen(config.port, resolve);
+    server.listen(getHttpListenOptions(config), resolve);
   });
 
   const address = server.address();

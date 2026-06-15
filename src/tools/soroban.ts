@@ -72,6 +72,33 @@ function parseArgToScVal(type: string, value: any): xdr.ScVal {
   }
 }
 
+export type ReadStateDurability = "persistent" | "temporary";
+
+function readStateDurabilityToXdr(durability: ReadStateDurability): xdr.ContractDataDurability {
+  switch (durability) {
+    case "temporary":
+      return xdr.ContractDataDurability.temporary();
+    default:
+      return xdr.ContractDataDurability.persistent();
+  }
+}
+
+export function buildReadStateLedgerKey(
+  contractId: string,
+  keyType: string,
+  keyValue: any,
+  durability: ReadStateDurability = "persistent"
+): xdr.LedgerKey {
+  const scValKey = parseArgToScVal(keyType, keyValue);
+  return xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: new Contract(contractId).address().toScAddress(),
+      key: scValKey,
+      durability: readStateDurabilityToXdr(durability)
+    })
+  );
+}
+
 async function waitForTransactionAndExtractValue(
   rpcServer: rpc.Server,
   txHash: string,
@@ -586,21 +613,14 @@ export function registerSorobanTools(server: McpServer, config: AppConfig): void
       keyType: z.enum([
         "u32", "i32", "u64", "i64", "u128", "i128", "u256", "i256", "string", "symbol", "address", "bool"
       ]).describe("The ScVal type of the ledger key"),
-      keyValue: z.any().describe("The value of the ledger key")
+      keyValue: z.any().describe("The value of the ledger key"),
+      durability: z.enum(["persistent", "temporary"]).default("persistent").describe("The durability of the contract data entry")
     },
-    async ({ contractId, keyType, keyValue }) => {
+    async ({ contractId, keyType, keyValue, durability }) => {
       try {
         const stellar = createStellarClients(config);
 
-        const scValKey = parseArgToScVal(keyType, keyValue);
-
-        const ledgerKey = xdr.LedgerKey.contractData(
-          new xdr.LedgerKeyContractData({
-            contract: new Contract(contractId).address().toScAddress(),
-            key: scValKey,
-            durability: xdr.ContractDataDurability.persistent(),
-          })
-        );
+        const ledgerKey = buildReadStateLedgerKey(contractId, keyType, keyValue, durability);
 
         const response = await stellar.runRpc(
           stellar.rpc.getLedgerEntries(ledgerKey),

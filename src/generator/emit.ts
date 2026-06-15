@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join, parse, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { Spec } from "@stellar/stellar-sdk/contract";
@@ -105,21 +105,37 @@ function funcDocLine(spec: Spec, fnName: string): string {
   return `Soroban contract method \`${escapeTemplateString(fnName)}\` (generated).`;
 }
 
+function resolveSafeOutputDir(outDir: string): string {
+  const resolved = resolve(outDir);
+  const root = parse(resolved).root;
+  if (resolved === root) {
+    throw new Error(`Refusing to generate into filesystem root: ${resolved}`);
+  }
+  if (resolved === process.cwd()) {
+    throw new Error(`Refusing to overwrite the current working directory: ${resolved}`);
+  }
+  return resolved;
+}
+
 export function generateProject(options: GenerateProjectOptions): void {
   const { outDir, packageName, toolAlias, loaded } = options;
   const { spec, entriesBase64 } = loaded;
   const stellarRoot = findStellarMcpPackageRoot();
   const parentPkg = readParentPackageJson(stellarRoot);
   const fingerprint = specFingerprint(entriesBase64);
+  const outputDir = resolveSafeOutputDir(outDir);
 
-  mkdirSync(outDir, { recursive: true });
-  cpSync(templateRoot(stellarRoot), outDir, { recursive: true });
-  mkdirSync(join(outDir, "src/generated"), { recursive: true });
+  if (existsSync(outputDir)) {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
+  mkdirSync(outputDir, { recursive: true });
+  cpSync(templateRoot(stellarRoot), outputDir, { recursive: true });
+  mkdirSync(join(outputDir, "src/generated"), { recursive: true });
 
   const errorsSrc = readErrorsTs(stellarRoot);
   const redactSrc = readRedactTs(stellarRoot);
-  writeFileSync(join(outDir, "src/lib/errors.ts"), errorsSrc, "utf8");
-  writeFileSync(join(outDir, "src/lib/redact.ts"), redactSrc, "utf8");
+  writeFileSync(join(outputDir, "src/lib/errors.ts"), errorsSrc, "utf8");
+  writeFileSync(join(outputDir, "src/lib/redact.ts"), redactSrc, "utf8");
 
   const kebabName = kebabPackage(packageName);
   const pkgJson = {
@@ -146,12 +162,12 @@ export function generateProject(options: GenerateProjectOptions): void {
       typescript: parentPkg.devDependencies["typescript"]
     }
   };
-  writeFileSync(join(outDir, "package.json"), `${JSON.stringify(pkgJson, null, 2)}\n`, "utf8");
+  writeFileSync(join(outputDir, "package.json"), `${JSON.stringify(pkgJson, null, 2)}\n`, "utf8");
 
   const specEntriesTs = `/** Auto-generated — do not edit. Contract spec entries (base64 XDR). */
 export const SPEC_ENTRIES = ${JSON.stringify(entriesBase64, null, 2)} as const;
 `;
-  writeFileSync(join(outDir, "src/generated/specEntries.ts"), specEntriesTs, "utf8");
+  writeFileSync(join(outputDir, "src/generated/specEntries.ts"), specEntriesTs, "utf8");
 
   const metaTs = `/** Generator metadata and compatibility expectations. */
 export const GENERATOR_ARTIFACT_VERSION = "${GENERATOR_ARTIFACT_VERSION}";
@@ -165,7 +181,7 @@ export const SPEC_FINGERPRINT = "${fingerprint}";
 export const COMPATIBILITY_NOTE =
   "Generated package must use the same major MCP protocol expectations as @modelcontextprotocol/sdk v1.x and @stellar/stellar-sdk v14.x family unless you regenerate with a newer stellarmcp-generate.";
 `;
-  writeFileSync(join(outDir, "src/generated/meta.ts"), metaTs, "utf8");
+  writeFileSync(join(outputDir, "src/generated/meta.ts"), metaTs, "utf8");
 
   const funcs = spec.funcs();
   const schemaBlocks: string[] = [];
@@ -198,19 +214,32 @@ const sourceAccountField = z
     const schemaExport = `${id}InputSchema`;
 
     const inputFields: string[] = ["contractId: contractIdOverride", "sourceAccount: sourceAccountField"];
-    const argNames: string[] = [];
+    const argMappings: Array<{ rawName: string; tsName: string }> = [];
     const tsFields: string[] = [];
+    const usedTsNames = new Map<string, string>();
+
+    const uniqueTsName = (rawName: string): string => {
+      const base = tsIdentifierForMethod(rawName);
+      let candidate = base;
+      let suffix = 1;
+      while (usedTsNames.has(candidate) && usedTsNames.get(candidate) !== rawName) {
+        candidate = `${base}_${suffix}`;
+        suffix += 1;
+      }
+      usedTsNames.set(candidate, rawName);
+      return candidate;
+    };
 
     for (const input of fn.inputs()) {
       const argNameRaw = input.name().toString();
-      const argId = tsIdentifierForMethod(argNameRaw);
       const mapped = scSpecTypeToZodAndTs(input.type());
       if (mapped.ts === "void") {
         continue;
       }
-      argNames.push(argId);
-      inputFields.push(`${argId}: ${mapped.zod}.describe(${JSON.stringify(`Contract argument ${argNameRaw}`)})`);
-      tsFields.push(`${argId}: ${mapped.ts}`);
+      const tsName = uniqueTsName(argNameRaw);
+      argMappings.push({ rawName: argNameRaw, tsName });
+      inputFields.push(`${tsName}: ${mapped.zod}.describe(${JSON.stringify(`Contract argument ${argNameRaw}`)})`);
+      tsFields.push(`${tsName}: ${mapped.ts}`);
     }
 
     schemaBlocks.push(`
@@ -228,14 +257,14 @@ ${inputFields.map((l) => `  ${l}`).join(",\n")}
       const typeName = argsTypeName;
       clientTypes.push(`export type ${typeName} = { ${tsFields.join("; ")} };`);
       clientConstEntries.push(
-        `  ${JSON.stringify(fnName)}: (args: ${typeName}) => ({ ${argNames.map((a) => `${a}: args.${a}`).join(", ")} })`
+        `  ${JSON.stringify(fnName)}: (args: ${typeName}) => ({ ${argMappings.map(({ rawName, tsName }) => `${JSON.stringify(rawName)}: args.${tsName}`).join(", ")} })`
       );
     }
 
     const argsObj =
-      argNames.length === 0
+      argMappings.length === 0
         ? "{}"
-        : `{ ${argNames.map((a) => `${a}: input.${a}`).join(", ")} }`;
+        : `{ ${argMappings.map(({ rawName, tsName }) => `${JSON.stringify(rawName)}: input.${tsName}`).join(", ")} }`;
 
     const desc = funcDocLine(spec, fnName);
 
@@ -256,7 +285,7 @@ ${inputFields.map((l) => `  ${l}`).join(",\n")}
   }
 
   writeFileSync(
-    join(outDir, "src/generated/schemas.ts"),
+    join(outputDir, "src/generated/schemas.ts"),
     `${schemaBlocks.join("\n")}\n`,
     "utf8"
   );
@@ -268,7 +297,7 @@ export const GeneratedContractCalls = {
 ${clientConstEntries.map((e) => `  ${e}`).join(",\n")}
 } as const;
 `;
-  writeFileSync(join(outDir, "src/generated/typedClient.ts"), `${typedClientTs}\n`, "utf8");
+  writeFileSync(join(outputDir, "src/generated/typedClient.ts"), `${typedClientTs}\n`, "utf8");
 
   const registerTs = `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Spec } from "@stellar/stellar-sdk/contract";
@@ -284,7 +313,7 @@ export function registerContractTools(server: McpServer, config: AppConfig): voi
 ${registerBlocks.join("\n\n")}
 }
 `;
-  writeFileSync(join(outDir, "src/registerContractTools.ts"), registerTs, "utf8");
+  writeFileSync(join(outputDir, "src/registerContractTools.ts"), registerTs, "utf8");
 
   const configTs = `import { Networks, StrKey } from "@stellar/stellar-sdk";
 import { z } from "zod";
@@ -344,7 +373,7 @@ export function loadConfig(): AppConfig {
   };
 }
 `;
-  writeFileSync(join(outDir, "src/config.ts"), configTs, "utf8");
+  writeFileSync(join(outputDir, "src/config.ts"), configTs, "utf8");
 
   const serverTs = `import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
@@ -360,7 +389,7 @@ export function createServer(config: AppConfig): McpServer {
   return server;
 }
 `;
-  writeFileSync(join(outDir, "src/server.ts"), serverTs, "utf8");
+  writeFileSync(join(outputDir, "src/server.ts"), serverTs, "utf8");
 
   const indexTs = `#!/usr/bin/env node
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -383,5 +412,5 @@ main().catch((error) => {
   process.exit(1);
 });
 `;
-  writeFileSync(join(outDir, "src/index.ts"), indexTs, "utf8");
+  writeFileSync(join(outputDir, "src/index.ts"), indexTs, "utf8");
 }

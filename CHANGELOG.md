@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.8 - 2026-06-15
+
+- Fix boolean env parsing so false-like values (`false`, `0`, `no`, `off`) no longer coerce to `true`.
+- Harden endpoint safety by sharing the canonical host guard across config overrides and discovered endpoints, including bracketed IPv6 and IPv6-mapped IPv4 cases.
+- Fix generator output so raw Soroban arg names are preserved when building `args` for `Spec.funcArgsToScVals`, while local TS identifiers remain collision-safe.
+- Remove stale files on generator regeneration.
+- Add explicit durability support to `stellar_soroban_read_state` with a testable ledger-key helper.
+- Bind HTTP-SSE to `127.0.0.1` by default and make the bind host configurable.
+- Bump runtime/package versions to `0.1.8`.
+
 ## 0.1.7 - 2026-03-22
 
 - **npm package name:** publish as **`@ggoldani/stellarmcp`** (`publishConfig.access: public`). The unscoped name `stellarmcp` is rejected by the registry as too similar to the existing package **`stellar-mcp`**. Generator `findStellarMcpPackageRoot` accepts any `@[scope]/stellarmcp` (and legacy `stellarmcp` for local dev).

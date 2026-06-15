@@ -376,6 +376,7 @@ Read the state of a specific contract data entry directly from the ledger withou
 | `contractId` | `string` | yes | Soroban contract ID (C...) |
 | `keyType` | `enum` | yes | The ScVal type of the ledger key |
 | `keyValue` | `any` | yes | The value of the ledger key |
+| `durability` | `enum` | no | The durability of the contract data entry |
 
 ### `stellar_soroban_simulate`
 

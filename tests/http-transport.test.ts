@@ -1,13 +1,40 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { validateMcpPostRequest } from "../src/transports/http.js";
+import {
+  getHttpListenOptions,
+  validateMcpPostRequest
+} from "../src/transports/http.js";
 
 function requestWithHeaders(headers: Record<string, string | string[]>) {
   return {
     headers
   } as const;
 }
+
+test("getHttpListenOptions defaults to localhost binding", () => {
+  const options = getHttpListenOptions({
+    port: 3000,
+    httpBindHost: "127.0.0.1"
+  } as never);
+
+  assert.deepEqual(options, {
+    port: 3000,
+    host: "127.0.0.1"
+  });
+});
+
+test("getHttpListenOptions preserves explicit host override", () => {
+  const options = getHttpListenOptions({
+    port: 8443,
+    httpBindHost: "0.0.0.0"
+  } as never);
+
+  assert.deepEqual(options, {
+    port: 8443,
+    host: "0.0.0.0"
+  });
+});
 
 test("validateMcpPostRequest rejects transfer-encoding", () => {
   const result = validateMcpPostRequest(
