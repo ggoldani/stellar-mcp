@@ -6,6 +6,34 @@ import { z } from "zod";
 import { Keypair, Networks } from "@stellar/stellar-sdk";
 
 import type { AutoSignPolicy, RuntimeTransport, StellarNetwork } from "./types.js";
+import { isUnsafeUrlHost } from "./lib/validate.js";
+
+function parseBoolEnv(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  if (["true", "1", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  if (["false", "0", "no", "off"].includes(normalized)) {
+    return false;
+  }
+
+  return undefined;
+}
+
+const boolEnv = (defaultValue: boolean) => z.preprocess(parseBoolEnv, z.boolean()).default(defaultValue);
 
 const EnvSchema = z.object({
   MCP_TRANSPORT: z.enum(["stdio", "http-sse"]).optional(),
@@ -17,7 +45,7 @@ const EnvSchema = z.object({
   STELLAR_TRUSTED_ANCHOR_DOMAINS: z.string().optional(),
   STELLAR_SECRET_KEY: z.string().optional(),
   STELLAR_AUTO_SIGN_POLICY: z.enum(["safe", "guarded", "expert"]).optional(),
-  STELLAR_AUTO_SIGN: z.coerce.boolean().default(false),
+  STELLAR_AUTO_SIGN: boolEnv(false),
   STELLAR_AUTO_SIGN_LIMIT: z.coerce.number().min(0).default(0),
   STELLAR_USDC_ISSUER: z
     .string()
@@ -27,8 +55,9 @@ const EnvSchema = z.object({
   MCP_HTTP_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
   MCP_HTTP_MAX_CONCURRENT: z.coerce.number().int().positive().default(20),
   MCP_HTTP_MAX_PAYLOAD_BYTES: z.coerce.number().int().positive().default(262_144),
-  MCP_HTTP_TRUST_PROXY: z.coerce.boolean().default(false),
-  STELLAR_META_CACHE_ENABLED: z.coerce.boolean().default(true),
+  MCP_HTTP_BIND_HOST: z.string().default("127.0.0.1"),
+  MCP_HTTP_TRUST_PROXY: boolEnv(false),
+  STELLAR_META_CACHE_ENABLED: boolEnv(true),
   STELLAR_META_CACHE_TTL_MS: z.coerce
     .number()
     .int()
@@ -68,6 +97,7 @@ export interface AppConfig {
   httpRateLimitPerMinute: number;
   httpMaxConcurrent: number;
   httpMaxPayloadBytes: number;
+  httpBindHost: string;
   httpTrustProxy: boolean;
   trustedAnchorDomains: string[];
   metaCacheEnabled: boolean;
@@ -82,36 +112,6 @@ const DEFAULT_ALLOWED_HOSTS = new Set<string>([
   "soroban.stellar.org",
   "soroban-testnet.stellar.org"
 ]);
-
-function isPrivateOrLocalHost(hostname: string): boolean {
-  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (normalized === "localhost" || normalized.endsWith(".local")) {
-    return true;
-  }
-
-  if (normalized === "::1" || normalized.startsWith("fe80:")) {
-    return true;
-  }
-
-  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(normalized)) {
-    return false;
-  }
-
-  const octets = normalized
-    .split(".")
-    .map((segment) => Number.parseInt(segment, 10));
-  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
-    return false;
-  }
-  const [a, b] = octets;
-  return (
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
-  );
-}
 
 function parseAllowedHosts(raw?: string): string[] {
   if (!raw) {
@@ -182,7 +182,7 @@ function validateEndpointOverride(
     throw new Error(`${endpointName} must use https.`);
   }
 
-  if (isPrivateOrLocalHost(parsed.hostname)) {
+  if (isUnsafeUrlHost(value)) {
     throw new Error(`${endpointName} cannot target private or local hosts.`);
   }
 
@@ -259,6 +259,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     httpRateLimitPerMinute: parsed.MCP_HTTP_RATE_LIMIT_PER_MIN,
     httpMaxConcurrent: parsed.MCP_HTTP_MAX_CONCURRENT,
     httpMaxPayloadBytes: parsed.MCP_HTTP_MAX_PAYLOAD_BYTES,
+    httpBindHost: parsed.MCP_HTTP_BIND_HOST,
     httpTrustProxy: parsed.MCP_HTTP_TRUST_PROXY,
     trustedAnchorDomains,
     metaCacheEnabled: parsed.STELLAR_META_CACHE_ENABLED,

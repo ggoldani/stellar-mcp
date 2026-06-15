@@ -5,9 +5,28 @@ import { Keypair } from "@stellar/stellar-sdk";
 import {
   amountSchema,
   assetInputSchema,
+  isUnsafeUrlHost,
   memoSchema,
-  publicKeySchema
+  publicKeySchema,
+  validateDiscoveredEndpoint
 } from "../src/lib/validate.js";
+
+test("isUnsafeUrlHost rejects IPv6 private and mapped loopback hosts", () => {
+  assert.equal(isUnsafeUrlHost("https://[::1]/"), true);
+  assert.equal(isUnsafeUrlHost("https://[fd00::1]/"), true);
+  assert.equal(isUnsafeUrlHost("https://[::ffff:127.0.0.1]/"), true);
+});
+
+test("isUnsafeUrlHost allows public IPv6 hosts", () => {
+  assert.equal(isUnsafeUrlHost("https://[2001:db8::1]/"), false);
+});
+
+test("validateDiscoveredEndpoint rejects IPv6 private hosts", () => {
+  assert.throws(
+    () => validateDiscoveredEndpoint("HORIZON_URL", "https://[fd00::1]/"),
+    /private|local/i
+  );
+});
 
 test("publicKeySchema accepts valid G address", () => {
   const valid = Keypair.random().publicKey();

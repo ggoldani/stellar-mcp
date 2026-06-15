@@ -3,7 +3,7 @@
  * Run: STELLAR_SECRET_KEY=<secret> node build/tests/security-e2e.test.js
  */
 import assert from "node:assert/strict";
-import { describe, it, before } from "node:test";
+import { describe, it, before, after } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { writeFileSync } from "node:fs";
@@ -32,12 +32,17 @@ async function ok(c: any, name: string, args: Record<string, unknown>): Promise<
   if (r.isError) throw new Error(`Tool error: ${textOf(r)}`);
   return textOf(r);
 }
-function spawn(opts: Record<string, string>): Promise<any> {
+async function spawn(opts: Record<string, string>): Promise<{
+  client: Client;
+  transport: StdioClientTransport;
+}> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v;
   Object.assign(env, opts);
-  const t = new StdioClientTransport({ command: "node", args: [`${PROJECT}/build/src/index.js`], env, cwd: PROJECT });
-  return new Client({ name: "test", version: "1.0" }).connect(t);
+  const transport = new StdioClientTransport({ command: "node", args: [`${PROJECT}/build/src/index.js`], env, cwd: PROJECT });
+  const client = new Client({ name: "test", version: "1.0" });
+  await client.connect(transport);
+  return { client, transport };
 }
 
 // Valid public key from a different account (Friendbot-funded)
@@ -48,7 +53,9 @@ const OTHER_KEY = "GBY3WHJBR47DDMS7EKYW266W5C2KOULJ572CPN6LPJ5VLLBXXGE2BDZ6";
 // ---------------------------------------------------------------------------
 describe("1. Path traversal", () => {
   let c: any;
-  before(async () => { c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" }); });
+  let transport: StdioClientTransport;
+  before(async () => { ({ client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" })); });
+  after(async () => { await c.close(); await transport.close(); });
 
   it("REJECT /etc/passwd", async () => {
     const r = await raw(c, "stellar_soroban_deploy", { wasmFilePath: "/etc/passwd", sourceAccount: PUBKEY });
@@ -77,7 +84,9 @@ describe("1. Path traversal", () => {
 // ---------------------------------------------------------------------------
 describe("2. Source key mismatch", () => {
   let c: any;
-  before(async () => { c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" }); });
+  let transport: StdioClientTransport;
+  before(async () => { ({ client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" })); });
+  after(async () => { await c.close(); await transport.close(); });
 
   it("soroban_invoke REJECTS wrong source key", async () => {
     const r = await raw(c, "stellar_soroban_invoke", {
@@ -120,38 +129,58 @@ describe("2. Source key mismatch", () => {
 // ---------------------------------------------------------------------------
 describe("3. Auto-sign policy", () => {
   it("safe → always unsigned", async () => {
-    const c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" });
+    const { client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" });
+    try {
     const r = await raw(c, "stellar_submit_payment", { from: PUBKEY, to: PUBKEY, asset: { type: "native" }, amount: "0.000001" });
     assert.ok(textOf(r).includes("unsigned"), `safe = unsigned: ${textOf(r).substring(0, 200)}`);
+    } finally {
+      await c.close();
+      await transport.close();
+    }
   });
 
   it("guarded + non-native → unsigned (no valuation)", async () => {
-    const c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" });
-    const r = await raw(c, "stellar_submit_payment", {
-      from: PUBKEY, to: PUBKEY,
-      asset: { type: "credit", code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" },
-      amount: "10",
-    });
-    assert.ok(textOf(r).includes("unsigned"), `no valuation → unsigned: ${textOf(r).substring(0, 200)}`);
+    const { client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" });
+    try {
+      const r = await raw(c, "stellar_submit_payment", {
+        from: PUBKEY, to: PUBKEY,
+        asset: { type: "credit", code: "USDC", issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5" },
+        amount: "10",
+      });
+      assert.ok(textOf(r).includes("unsigned"), `no valuation → unsigned: ${textOf(r).substring(0, 200)}`);
+    } finally {
+      await c.close();
+      await transport.close();
+    }
   });
 
   it("guarded + XLM on testnet → unsigned (no SEP-38 price feed)", async () => {
-    const c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" });
-    const r = await raw(c, "stellar_submit_payment", { from: PUBKEY, to: PUBKEY, asset: { type: "native" }, amount: "0.000001" });
-    // Without SEP-38 URL, valuation fails → unsigned. This is correct behavior.
-    assert.ok(textOf(r).includes("unsigned"), `no price feed → unsigned: ${textOf(r).substring(0, 200)}`);
+    const { client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "guarded", STELLAR_AUTO_SIGN_LIMIT: "100" });
+    try {
+      const r = await raw(c, "stellar_submit_payment", { from: PUBKEY, to: PUBKEY, asset: { type: "native" }, amount: "0.000001" });
+      // Without SEP-38 URL, valuation fails → unsigned. This is correct behavior.
+      assert.ok(textOf(r).includes("unsigned"), `no price feed → unsigned: ${textOf(r).substring(0, 200)}`);
+    } finally {
+      await c.close();
+      await transport.close();
+    }
   });
 
   it("expert → signs and submits to testnet (no limit check)", async () => {
-    const c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "expert" });
-    const r = await raw(c, "stellar_submit_payment", { from: PUBKEY, to: PUBKEY, asset: { type: "native" }, amount: "0.000001" });
-    assert.ok(!textOf(r).includes("does not match"), `no key error: ${textOf(r).substring(0, 200)}`);
-    // Expert always signs. May fail at Horizon (seq, fees) but NOT at policy
-    if (isErr(r)) {
-      assert.ok(!textOf(r).includes("unsigned") && !textOf(r).includes("mismatch"),
-        `horizon error, not policy: ${textOf(r).substring(0, 200)}`);
-    } else {
-      assert.ok(textOf(r).includes("success") || textOf(r).includes("hash"));
+    const { client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "expert" });
+    try {
+      const r = await raw(c, "stellar_submit_payment", { from: PUBKEY, to: PUBKEY, asset: { type: "native" }, amount: "0.000001" });
+      assert.ok(!textOf(r).includes("does not match"), `no key error: ${textOf(r).substring(0, 200)}`);
+      // Expert always signs. May fail at Horizon (seq, fees) but NOT at policy
+      if (isErr(r)) {
+        assert.ok(!textOf(r).includes("unsigned") && !textOf(r).includes("mismatch"),
+          `horizon error, not policy: ${textOf(r).substring(0, 200)}`);
+      } else {
+        assert.ok(textOf(r).includes("success") || textOf(r).includes("hash"));
+      }
+    } finally {
+      await c.close();
+      await transport.close();
     }
   });
 });
@@ -161,7 +190,9 @@ describe("3. Auto-sign policy", () => {
 // ---------------------------------------------------------------------------
 describe("4. SSRF + real fetch", () => {
   let c: any;
-  before(async () => { c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" }); });
+  let transport: StdioClientTransport;
+  before(async () => { ({ client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" })); });
+  after(async () => { await c.close(); await transport.close(); });
 
   it("real anchor toml works", async () => {
     const r = await ok(c, "stellar_get_anchor_toml", { anchorDomain: "demo-wallet.stellar.org" });
@@ -178,8 +209,13 @@ describe("4. SSRF + real fetch", () => {
 // ---------------------------------------------------------------------------
 describe("5. Single key parse", () => {
   it("server starts and queries account", async () => {
-    const c = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" });
-    const r = await raw(c, "stellar_get_account", { publicKey: PUBKEY });
-    assert.ok(!isErr(r), `account lookup works: ${textOf(r).substring(0, 200)}`);
+    const { client: c, transport } = await spawn({ STELLAR_NETWORK: "testnet", STELLAR_SECRET_KEY: sk, STELLAR_AUTO_SIGN_POLICY: "safe" });
+    try {
+      const r = await raw(c, "stellar_get_account", { publicKey: PUBKEY });
+      assert.ok(!isErr(r), `account lookup works: ${textOf(r).substring(0, 200)}`);
+    } finally {
+      await c.close();
+      await transport.close();
+    }
   });
 });

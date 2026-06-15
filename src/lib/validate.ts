@@ -1,6 +1,74 @@
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { z } from "zod";
 
+function normalizeUrlHostname(raw: string): string | null {
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return null;
+    return parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  } catch {
+    return null;
+  }
+}
+
+function isPrivateIpv4(hostname: string): boolean {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return false;
+  }
+
+  const octets = hostname.split(".").map(Number);
+  if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+    return false;
+  }
+
+  const [a, b] = octets;
+  return (
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168)
+  );
+}
+
+function isUnsafeHostname(hostname: string): boolean {
+  if (hostname === "localhost" || hostname.endsWith(".local")) {
+    return true;
+  }
+
+  if (hostname === "::1" || hostname.startsWith("fe80:") || hostname.startsWith("fc") || hostname.startsWith("fd")) {
+    return true;
+  }
+
+  if (hostname.startsWith("::ffff:")) {
+    const mapped = hostname.slice("::ffff:".length);
+    if (mapped.includes(".")) {
+      return isPrivateIpv4(mapped);
+    }
+
+    const parts = mapped.split(":");
+    if (parts.length === 2) {
+      const hi = Number.parseInt(parts[0], 16);
+      const lo = Number.parseInt(parts[1], 16);
+      if (
+        Number.isInteger(hi) &&
+        Number.isInteger(lo) &&
+        hi >= 0 &&
+        hi <= 0xffff &&
+        lo >= 0 &&
+        lo <= 0xffff
+      ) {
+        const dotted = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+        return isPrivateIpv4(dotted);
+      }
+    }
+
+    return true;
+  }
+
+  return isPrivateIpv4(hostname);
+}
+
 export const publicKeySchema = z
   .string()
   .trim()
@@ -47,23 +115,12 @@ export function assertSourceKeyMatch(
 }
 
 export function isUnsafeUrlHost(raw: string): boolean {
-  try {
-    const parsed = new URL(raw);
-    if (parsed.protocol !== "https:") return true;
-    const hostname = parsed.hostname.toLowerCase();
-    if (hostname === "localhost" || hostname.endsWith(".local")) return true;
-    if (hostname === "::1" || hostname.startsWith("fe80:")) return true;
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
-      const octets = hostname.split(".").map(Number);
-      if (octets.length !== 4) return true;
-      const [a, b] = octets;
-      if (a === 10 || a === 127 || (a === 169 && b === 254) ||
-          (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)) return true;
-    }
-    return false;
-  } catch {
+  const hostname = normalizeUrlHostname(raw);
+  if (!hostname) {
     return true;
   }
+
+  return isUnsafeHostname(hostname);
 }
 
 export function validateDiscoveredEndpoint(key: string, url: string): string {
