@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Keypair, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { z } from "zod";
 
 type OperationRecord = {
